@@ -6,13 +6,14 @@
     "dev": "next dev",
     "build": "next build",
     "start": "next start",
-    "lint": "next lint"
+    "lint": "next lint",
+    "db:push": "dotenv -e .env.local -- prisma db push"
   },
   "dependencies": {
-    "@prisma/client": "^6.12.0",
+    "@prisma/client": "^6.13.0",
     "next": "15.4.2",
     "next-auth": "^4.24.11",
-    "prisma": "^6.12.0",
+    "prisma": "^6.13.0",
     "react": "19.1.0",
     "react-dom": "19.1.0"
   },
@@ -23,6 +24,7 @@
     "@types/react": "^19",
     "@types/react-dom": "^19",
     "autoprefixer": "^10.4.21",
+    "dotenv-cli": "^10.0.0",
     "eslint": "^9",
     "eslint-config-next": "15.4.2",
     "postcss": "^8.5.6",
