@@ -8,7 +8,7 @@ const config: Config = {
       "ts-jest",
       {
         useESM: false,
-        tsconfig: "tsconfig.json",
+        tsconfig: "tsconfig.jest.json",
       },
     ],
   },
