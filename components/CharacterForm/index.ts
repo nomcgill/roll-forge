@@ -1,1 +1,1 @@
-export { default } from './CharacterForm'
+export { default } from "./CharacterForm";
