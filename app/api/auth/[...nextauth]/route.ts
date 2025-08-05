@@ -1,10 +1,11 @@
-import NextAuth from "next-auth";
+import NextAuth, { type NextAuthOptions } from "next-auth";
 import GoogleProvider from "next-auth/providers/google";
 import FacebookProvider from "next-auth/providers/facebook";
 import { PrismaAdapter } from "@next-auth/prisma-adapter";
 import { prisma } from "@/lib/prisma";
 
-const handler = NextAuth({
+// Strongly typed authOptions
+export const authOptions: NextAuthOptions = {
   adapter: PrismaAdapter(prisma),
   providers: [
     GoogleProvider({
@@ -31,7 +32,10 @@ const handler = NextAuth({
       console.log("🟡 Sign-in event:", message);
     },
   },
-  // debug: true, // Optional: enables verbose server-side logging from NextAuth
-});
+  // debug: true,
+};
+
+// Pass typed options into NextAuth
+const handler = NextAuth(authOptions);
 
 export { handler as GET, handler as POST };
