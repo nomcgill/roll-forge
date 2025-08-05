@@ -1,16 +1,28 @@
-import type { Config } from 'jest'
+import type { Config } from "jest";
 
 const config: Config = {
-  testEnvironment: 'jsdom',
-  preset: 'ts-jest',
-  moduleNameMapper: {
-    '^@/(.*)$': '<rootDir>/$1', // if using path aliases
-  },
-  setupFilesAfterEnv: ['<rootDir>/jest.setup.ts'],
-  testPathIgnorePatterns: ['<rootDir>/.next/', '<rootDir>/node_modules/'],
+  preset: "ts-jest",
+  testEnvironment: "jsdom",
   transform: {
-    '^.+\\.(ts|tsx)$': ['ts-jest', { useESM: true }],
+    "^.+\\.(ts|tsx)$": [
+      "ts-jest",
+      {
+        useESM: false,
+        tsconfig: "tsconfig.json",
+      },
+    ],
   },
-}
+  moduleNameMapper: {
+    "\\.(css|less|scss|sass)$": "identity-obj-proxy",
+    "^@/(.*)$": "<rootDir>/$1",
+  },
+  setupFilesAfterEnv: ["<rootDir>/jest.setup.ts"],
+  testPathIgnorePatterns: ["/node_modules/", "/.next/"],
+  transformIgnorePatterns: [
+    "/node_modules/(?!(axios|lodash-es)/)",
+    "[/\\\\]node_modules[/\\\\].+\\.js$",
+  ],
+  moduleFileExtensions: ["ts", "tsx", "js", "jsx", "json", "node"],
+};
 
-export default config
+export default config;
