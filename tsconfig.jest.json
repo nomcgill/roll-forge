@@ -2,7 +2,8 @@
   "extends": "./tsconfig.json",
   "compilerOptions": {
     "jsx": "react-jsx",
-    "noEmit": false // needed to allow ts-jest transform JSX
+    "noEmit": false,
+    "lib": ["dom", "esnext"] // includes DOM typings
   },
   "include": ["**/*.test.ts", "**/*.test.tsx", "jest.setup.ts"]
 }
