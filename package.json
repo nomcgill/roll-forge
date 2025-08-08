@@ -17,6 +17,7 @@
     "@prisma/client": "^6.13.0",
     "next": "15.4.2",
     "next-auth": "^4.24.11",
+    "next-test-api-route-handler": "^5.0.0",
     "prisma": "^6.13.0",
     "react": "19.1.0",
     "react-dom": "19.1.0"

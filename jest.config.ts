@@ -1,28 +1,22 @@
-import type { Config } from "jest";
+import nextJest from "next/jest";
 
-const config: Config = {
-  preset: "ts-jest",
+const createJestConfig = nextJest({
+  dir: "./", // path to your Next.js app
+});
+
+const customJestConfig = {
   testEnvironment: "jsdom",
-  transform: {
-    "^.+\\.(ts|tsx)$": [
-      "ts-jest",
-      {
-        useESM: false,
-        tsconfig: "tsconfig.jest.json",
-      },
-    ],
-  },
-  moduleNameMapper: {
-    "\\.(css|less|scss|sass)$": "identity-obj-proxy",
-    "^@/(.*)$": "<rootDir>/$1",
-  },
   setupFilesAfterEnv: ["<rootDir>/jest.setup.ts"],
+
+  // Keep your aliases and CSS handling
+  moduleNameMapper: {
+    "^@/(.*)$": "<rootDir>/$1",
+    "\\.(css|less|scss|sass)$": "identity-obj-proxy",
+  },
+
   testPathIgnorePatterns: ["/node_modules/", "/.next/"],
-  transformIgnorePatterns: [
-    "/node_modules/(?!(axios|lodash-es)/)",
-    "[/\\\\]node_modules[/\\\\].+\\.js$",
-  ],
-  moduleFileExtensions: ["ts", "tsx", "js", "jsx", "json", "node"],
+
+  // Most transforms are handled by next/jest; no ts-jest preset needed
 };
 
-export default config;
+export default createJestConfig(customJestConfig);
