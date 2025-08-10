@@ -4,12 +4,19 @@
   "private": true,
   "scripts": {
     "dev": "next dev",
+    "stop:dev": "powershell.exe -NoProfile -Command \"Get-Process -Id (Get-NetTCPConnection -LocalPort 3000).OwningProcess | Stop-Process\"",
     "build": "next build",
     "start": "next start",
     "lint": "next lint",
     "test": "jest",
     "test:watch": "jest --watch",
+    "db:status": "powershell.exe -NoProfile -Command \"(Get-Service -Name 'postgresql-x64-17').Status\"",
+    "db:stop": "powershell.exe -NoProfile -Command \"Start-Process PowerShell -Verb RunAs -ArgumentList 'Stop-Service -Name \\\"postgresql-x64-17\\\"'\"",
+    "db:start": "powershell.exe -NoProfile -Command \"Start-Process PowerShell -Verb RunAs -ArgumentList 'Start-Service -Name \\\"postgresql-x64-17\\\"'\"",
+    "db:restart": "powershell.exe -NoProfile -Command \"Start-Process PowerShell -Verb RunAs -ArgumentList 'Restart-Service -Name \\\"postgresql-x64-17\\\"'\"",
     "db:push": "dotenv -e .env.local -- prisma db push",
+    "db:migrate:dev": "dotenv -e .env.local -- prisma migrate dev",
+    "db:migrate:prod": "dotenv -e .env.production -- prisma migrate deploy",
     "studio": "dotenv -e .env.local -- prisma studio"
   },
   "dependencies": {

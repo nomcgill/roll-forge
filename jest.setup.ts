@@ -1,17 +1,35 @@
 import "@testing-library/jest-dom";
 
+// --- Top-level mocks (must be outside hooks) ---
+const push = jest.fn();
+const replace = jest.fn();
+const refresh = jest.fn();
+const back = jest.fn();
+
+jest.mock("next/navigation", () => ({
+  useRouter: () => ({ push, replace, refresh, back }),
+  usePathname: () => "/",
+  useSearchParams: () => ({
+    get: jest.fn(),
+    getAll: jest.fn(),
+    has: jest.fn(),
+    keys: jest.fn(),
+  }),
+}));
+
+// Make router fns accessible in tests if needed
+// e.g. const { push } = (global as any).__NEXT_ROUTER_MOCK__;
+(global as any).__NEXT_ROUTER_MOCK__ = { push, replace, refresh, back };
+
+// --- Test lifecycle setup ---
 beforeAll(() => {
-  // Silence console.error noise
+  // Silence console.error noise in tests (remove if you want real errors visible)
   jest.spyOn(console, "error").mockImplementation(() => {});
 
-  // Ensure window.alert doesn’t throw in jsdom
-  // (overwrite it directly to be safe across jsdom versions)
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  // Stable alert stub across jsdom versions/environments
   (global as any).alert = jest.fn();
   if (typeof window !== "undefined") {
-    // keep window.alert in sync
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    (window as any).alert = global.alert;
+    (window as any).alert = (global as any).alert;
   }
 });
 
@@ -22,3 +40,4 @@ afterAll(() => {
 afterEach(() => {
   jest.clearAllMocks();
 });
+// Reset global mocks after each test
