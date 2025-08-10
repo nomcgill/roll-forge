@@ -10,6 +10,8 @@
     "lint": "next lint",
     "test": "jest",
     "test:watch": "jest --watch",
+    "zip:context": "bash -lc \"set -e; tree -a -I 'node_modules|.next|.git|dist|build|rollforge-context.zip' -L 5 > project-tree.txt; yarn test --coverage; zip -r rollforge-context.zip . -x 'node_modules/*' '.next/*' '.git/*' 'dist/*' 'build/*' '*.log' 'rollforge-context.zip'\"",
+    "zip:context:tar": "bash -lc \"set -e; OUTDIR=..; (command -v tree >/dev/null && tree -a -I 'node_modules|.next|.git|dist|build|rollforge-context.tar.gz' -L 5 || find . -path './node_modules' -prune -o -path './.next' -prune -o -path './.git' -prune -o -path './dist' -prune -o -path './build' -prune -o -print) > $OUTDIR/project-tree.txt; yarn test --coverage; tar --exclude='./node_modules' --exclude='./.next' --exclude='./.git' --exclude='./dist' --exclude='./build' --exclude='./rollforge-context.tar.gz' -czf $OUTDIR/rollforge-context.tar.gz .\"",
     "db:status": "powershell.exe -NoProfile -Command \"(Get-Service -Name 'postgresql-x64-17').Status\"",
     "db:stop": "powershell.exe -NoProfile -Command \"Start-Process PowerShell -Verb RunAs -ArgumentList 'Stop-Service -Name \\\"postgresql-x64-17\\\"'\"",
     "db:start": "powershell.exe -NoProfile -Command \"Start-Process PowerShell -Verb RunAs -ArgumentList 'Start-Service -Name \\\"postgresql-x64-17\\\"'\"",

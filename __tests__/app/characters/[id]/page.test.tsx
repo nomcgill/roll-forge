@@ -1,50 +1,74 @@
-import { render, screen, waitFor } from '@testing-library/react';
-import CharacterPage from '@/app/characters/[id]/page';
-import { prisma } from '@/lib/prisma';
-import { notFound } from 'next/navigation';
+const mockGetServerSession = jest.fn();
+jest.mock("next-auth", () => ({
+    getServerSession: (...args: unknown[]) => mockGetServerSession(...args),
+}));
+jest.mock("@/lib/auth", () => ({ authOptions: {} as unknown }));
 
-jest.mock('@/lib/prisma', () => ({
+// Prisma named export
+const mockFindFirst = jest.fn();
+jest.mock("@/lib/prisma", () => ({
+    __esModule: true,
     prisma: {
         character: {
-            findUnique: jest.fn(),
+            findFirst: (...args: unknown[]) => mockFindFirst(...args),
         },
     },
 }));
 
-jest.mock('next/navigation', () => ({
-    ...jest.requireActual('next/navigation'),
-    notFound: jest.fn(),
+// Make headers() return an object where .get() is undefined => base is ""
+jest.mock("next/headers", () => ({
+    headers: () => ({ get: (_: string) => undefined }),
 }));
 
-describe('CharacterPage', () => {
+// next/navigation throws for redirect/notFound in tests
+const redirect = jest.fn((url: string) => {
+    const e: any = new Error("NEXT_REDIRECT");
+    e.digest = "NEXT_REDIRECT";
+    e.url = url;
+    throw e;
+});
+const notFound = jest.fn(() => {
+    const e: any = new Error("NEXT_NOT_FOUND");
+    e.digest = "NEXT_NOT_FOUND";
+    throw e;
+});
+
+jest.mock("next/navigation", () => ({
+    redirect,
+    notFound,
+}));
+
+import CharacterPage from "@/app/characters/[id]/page";
+
+describe("CharacterPage redirect with callbackUrl", () => {
     beforeEach(() => {
         jest.clearAllMocks();
     });
 
-    it('renders the character when found', async () => {
-        (prisma.character.findUnique as jest.Mock).mockResolvedValueOnce({
-            id: '123',
-            name: 'Test Hero',
-            avatarUrl: 'https://example.com/avatar.png',
-        });
+    it("redirects unauthenticated users to sign-in with callbackUrl", async () => {
+        mockGetServerSession.mockResolvedValueOnce(null);
 
-        // params is now a Promise
-        const params = Promise.resolve({ id: '123' });
+        await expect(
+            CharacterPage({ params: Promise.resolve({ id: "char_123" }) })
+        ).rejects.toMatchObject({ digest: "NEXT_REDIRECT" });
 
-        render(await CharacterPage({ params }));
-
-        await waitFor(() => {
-            expect(screen.getByText('Test Hero')).toBeInTheDocument();
-        });
+        // callbackUrl should be the original page (relative here because headers mocked)
+        const expected = `/api/auth/signin?callbackUrl=${encodeURIComponent(
+            "/characters/char_123"
+        )}`;
+        expect(redirect).toHaveBeenCalledWith(expected);
+        expect(mockFindFirst).not.toHaveBeenCalled();
     });
 
-    it('calls notFound when character does not exist', async () => {
-        (prisma.character.findUnique as jest.Mock).mockResolvedValueOnce(null);
+    it("returns 404 (notFound) when the character is not owned by the user", async () => {
+        mockGetServerSession.mockResolvedValueOnce({ user: { id: "user_abc" } });
+        mockFindFirst.mockResolvedValueOnce(null);
 
-        const params = Promise.resolve({ id: 'does-not-exist' });
-
-        await CharacterPage({ params });
+        await expect(
+            CharacterPage({ params: Promise.resolve({ id: "char_999" }) })
+        ).rejects.toMatchObject({ digest: "NEXT_NOT_FOUND" });
 
         expect(notFound).toHaveBeenCalled();
+        expect(redirect).not.toHaveBeenCalled();
     });
 });

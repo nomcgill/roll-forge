@@ -1,3 +1,6 @@
+export const dynamic = "force-dynamic";
+export const runtime = "nodejs";
+
 import { NextResponse } from "next/server";
 import { getServerSession } from "next-auth";
 import { authOptions } from "@/lib/auth";
@@ -8,22 +11,30 @@ export async function GET(
   { params }: { params: { id: string } }
 ) {
   const session = await getServerSession(authOptions);
-  if (!session?.user?.email) {
-    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  const userId = (session?.user as { id?: string } | undefined)?.id;
+  if (!userId) {
+    return NextResponse.json(
+      { error: "Unauthorized" },
+      { status: 401, headers: { "Cache-Control": "no-store" } }
+    );
   }
 
   const character = await prisma.character.findFirst({
-    where: { id: params.id, user: { email: session.user.email } },
-    select: { id: true, name: true, avatarUrl: true },
+    where: { id: params.id, userId },
   });
 
   if (!character) {
-    return NextResponse.json({ error: "Not found" }, { status: 404 });
+    return NextResponse.json(
+      { error: "Not found" },
+      { status: 404, headers: { "Cache-Control": "no-store" } }
+    );
   }
 
-  return NextResponse.json(character, { status: 200 });
+  return new NextResponse(JSON.stringify(character), {
+    status: 200,
+    headers: {
+      "Content-Type": "application/json",
+      "Cache-Control": "no-store",
+    },
+  });
 }
-// This endpoint fetches a single character by ID for the authenticated user
-// It checks for a valid session and returns a 401 if not authenticated
-// If the character is not found, it returns a 404
-// Otherwise, it returns the character data with a 200 status
