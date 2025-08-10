@@ -1,68 +1,54 @@
-/** @jest-environment node */
-import { prisma } from "@/lib/prisma";
-import { NextRequest } from "next/server";
-import { DELETE } from "@/app/api/characters/[id]/DELETE";
 import { getServerSession } from "next-auth";
 
-jest.mock("next-auth", () => ({
-  getServerSession: jest.fn(),
-}));
-jest.mock("@/app/api/auth/[...nextauth]/route", () => ({
-  authOptions: {},
-}));
-
-jest.mock("@/lib/prisma", () => ({
-  prisma: {
-    character: {
-      findUnique: jest.fn(),
-      delete: jest.fn(),
-    },
+jest.mock("next/server", () => ({
+  NextResponse: {
+    json: (data: any, init?: { status?: number }) => ({
+      status: init?.status ?? 200,
+      json: async () => data,
+    }),
   },
 }));
 
+jest.mock("@/lib/prisma", () => ({
+  prisma: { character: { findFirst: jest.fn(), delete: jest.fn() } },
+}));
+
+jest.mock("next-auth", () => {
+  const actual = jest.requireActual("next-auth");
+  return { ...actual, getServerSession: jest.fn() };
+});
+
+import { DELETE } from "@/app/api/characters/[id]/DELETE";
+
 describe("DELETE /api/characters/[id]", () => {
-  beforeEach(() => {
-    jest.clearAllMocks();
+  it("returns 401 when not authenticated", async () => {
+    (getServerSession as jest.Mock).mockResolvedValue(null);
+    const res = await DELETE({} as any, { params: { id: "1" } });
+    expect(res.status).toBe(401);
+  });
+
+  it("deletes when owned by user", async () => {
     (getServerSession as jest.Mock).mockResolvedValue({
-      user: { email: "test@example.com" },
+      user: { email: "a@b.com" },
     });
+    const { prisma } = await import("@/lib/prisma");
+    (prisma.character.findFirst as jest.Mock).mockResolvedValue({ id: "1" });
+    (prisma.character.delete as jest.Mock).mockResolvedValue({});
+
+    const res = await DELETE({} as any, { params: { id: "1" } });
+    const json = await res.json();
+    expect(res.status).toBe(200);
+    expect(json).toEqual({ ok: true, id: "1" });
   });
 
-  it("deletes character and returns 204", async () => {
-    (prisma.character.findUnique as jest.Mock).mockResolvedValueOnce({
-      id: "abc123",
-      name: "To Delete",
-      avatarUrl: null,
-      userId: "user-1",
-      createdAt: new Date("2024-01-01T00:00:00Z"),
-      updatedAt: new Date("2024-01-02T00:00:00Z"),
+  it("returns 404 when not owned/not found", async () => {
+    (getServerSession as jest.Mock).mockResolvedValue({
+      user: { email: "a@b.com" },
     });
-    (prisma.character.delete as jest.Mock).mockResolvedValueOnce({});
+    const { prisma } = await import("@/lib/prisma");
+    (prisma.character.findFirst as jest.Mock).mockResolvedValue(null);
 
-    const req = {} as NextRequest;
-    const res = await DELETE(req, { params: { id: "abc123" } });
-
-    expect(res.status).toBe(204);
-  });
-
-  it("returns 500 on error", async () => {
-    (prisma.character.findUnique as jest.Mock).mockResolvedValueOnce({
-      id: "abc123",
-      name: "To Delete",
-      avatarUrl: null,
-      userId: "user-1",
-      createdAt: new Date("2024-01-01T00:00:00Z"),
-      updatedAt: new Date("2024-01-02T00:00:00Z"),
-    });
-    (prisma.character.delete as jest.Mock).mockRejectedValueOnce(
-      new Error("DB error")
-    );
-
-    const req = {} as NextRequest;
-    const res = await DELETE(req, { params: { id: "abc123" } });
-
-    expect(res.status).toBe(500);
-    const data = await res.json();
-    expect(data).toEqual({ error: "Internal Server Error" });
+    const res = await DELETE({} as any, { params: { id: "nope" } });
+    expect(res.status).toBe(404);
   });
 });

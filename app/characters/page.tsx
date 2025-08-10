@@ -1,8 +1,9 @@
-import { getServerSession } from 'next-auth';
-import { authOptions } from '@/app/api/auth/[...nextauth]/route';
-import { prisma } from '@/lib/prisma';
+// app/characters/page.tsx
+import { getServerSession } from "next-auth";
+import { authOptions } from '@/lib/auth';
+import { prisma } from "@/lib/prisma";
 
-import CharacterList from '@/components/CharacterList'
+import CharacterList from "@/components/CharacterList";
 
 export default async function CharactersPage() {
     const session = await getServerSession(authOptions);
@@ -12,11 +13,9 @@ export default async function CharactersPage() {
     }
 
     const characters = await prisma.character.findMany({
-        where: {
-            user: {
-                email: session.user.email,
-            },
-        },
+        where: { user: { email: session.user.email } },
+        select: { id: true, name: true, avatarUrl: true }, // ⬅ aligns with CharacterList type
+        orderBy: { name: "asc" },
     });
 
     return (
@@ -30,3 +29,6 @@ export default async function CharactersPage() {
         </main>
     );
 }
+// This page fetches the user's characters from the database
+// It checks for a valid session and displays a message if not authenticated
+// It uses the CharacterList component to render the characters
