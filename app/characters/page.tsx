@@ -1,34 +1,27 @@
-// app/characters/page.tsx
-import { getServerSession } from "next-auth";
-import { authOptions } from '@/lib/auth';
-import { prisma } from "@/lib/prisma";
+export const dynamic = "force-dynamic";
+export const revalidate = 0;
+export const runtime = "nodejs";
 
+import { redirect } from "next/navigation";
+import { getServerSession } from "next-auth";
+import { authOptions } from "@/lib/auth";
+import { prisma } from "@/lib/prisma";
 import CharacterList from "@/components/CharacterList";
 
 export default async function CharactersPage() {
     const session = await getServerSession(authOptions);
+    const userId = (session?.user as { id?: string } | undefined)?.id;
 
-    if (!session || !session.user?.email) {
-        return <p className="p-4">You must be logged in to view characters.</p>;
+    if (!userId) {
+        // After login, return to the list
+        redirect(`/api/auth/signin?callbackUrl=${encodeURIComponent("/characters")}`);
     }
 
     const characters = await prisma.character.findMany({
-        where: { user: { email: session.user.email } },
-        select: { id: true, name: true, avatarUrl: true }, // ⬅ aligns with CharacterList type
+        where: { userId },
         orderBy: { name: "asc" },
+        select: { id: true, name: true, avatarUrl: true }, // matches CharacterList props
     });
 
-    return (
-        <main className="p-4 max-w-xl mx-auto space-y-4">
-            <h1 className="text-2xl font-bold">Your Characters</h1>
-            {characters.length === 0 ? (
-                <p>No characters yet!</p>
-            ) : (
-                <CharacterList characters={characters} />
-            )}
-        </main>
-    );
+    return <CharacterList characters={characters} />;
 }
-// This page fetches the user's characters from the database
-// It checks for a valid session and displays a message if not authenticated
-// It uses the CharacterList component to render the characters

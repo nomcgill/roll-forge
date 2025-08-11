@@ -1,47 +1,45 @@
-import { getServerSession } from "next-auth";
+const mockGetServerSession = jest.fn();
+jest.mock("next-auth", () => ({
+  getServerSession: (...args: unknown[]) => mockGetServerSession(...args),
+}));
+jest.mock("@/lib/auth", () => ({ authOptions: {} as unknown }));
 
-jest.mock("next/server", () => ({
-  NextResponse: {
-    json: (data: any, init?: { status?: number }) => ({
-      status: init?.status ?? 200,
-      json: async () => data,
-    }),
+const mockFindMany = jest.fn();
+jest.mock("@/lib/prisma", () => ({
+  __esModule: true,
+  prisma: {
+    character: {
+      findMany: (...args: unknown[]) => mockFindMany(...args),
+    },
   },
 }));
 
-jest.mock("@/lib/prisma", () => ({
-  prisma: { character: { findMany: jest.fn() } },
-}));
-
-// Keep real next-auth default export, only stub getServerSession
-jest.mock("next-auth", () => {
-  const actual = jest.requireActual("next-auth");
-  return { ...actual, getServerSession: jest.fn() };
-});
-
-// import { GET } from "@/app/api/characters/GET";
-import { GET } from "@/app/api/characters/route";
+import { GET } from "@/app/api/characters/GET";
 
 describe("GET /api/characters", () => {
-  it("returns 401 if not authenticated", async () => {
-    (getServerSession as jest.Mock).mockResolvedValue(null);
-    const res = await GET();
-    expect(res.status).toBe(401);
+  beforeEach(() => {
+    jest.clearAllMocks();
   });
 
-  it("returns characters for authenticated user", async () => {
-    (getServerSession as jest.Mock).mockResolvedValue({
-      user: { email: "test@example.com" },
-    });
-
-    const { prisma } = await import("@/lib/prisma");
-    (prisma.character.findMany as jest.Mock).mockResolvedValue([
-      { id: "1", name: "Hero", avatarUrl: null },
-    ]);
+  it("401 when unauthenticated", async () => {
+    mockGetServerSession.mockResolvedValueOnce(null);
 
     const res = await GET();
-    const json = await res.json();
+    expect(res.status).toBe(401);
+    expect(await res.json()).toEqual({ error: "Unauthorized" });
+    expect(mockFindMany).not.toHaveBeenCalled();
+  });
+
+  it("200 with current user's characters", async () => {
+    mockGetServerSession.mockResolvedValueOnce({ user: { id: "user_abc" } });
+    const items = [
+      { id: "c1", name: "Aldra", avatarUrl: null },
+      { id: "c2", name: "Brix", avatarUrl: null },
+    ];
+    mockFindMany.mockResolvedValueOnce(items);
+
+    const res = await GET();
     expect(res.status).toBe(200);
-    expect(json).toEqual([{ id: "1", name: "Hero", avatarUrl: null }]);
+    expect(await res.json()).toEqual(items);
   });
 });
