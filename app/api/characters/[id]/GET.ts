@@ -5,13 +5,14 @@ import { NextResponse } from "next/server";
 import { getServerSession } from "next-auth";
 import { authOptions } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
+import { getUserId } from "@/lib/session";
 
 export async function GET(
   _req: Request,
   { params }: { params: { id: string } }
-) {
+): Promise<Response> {
   const session = await getServerSession(authOptions);
-  const userId = (session?.user as { id?: string } | undefined)?.id;
+  const userId = getUserId(session);
   if (!userId) {
     return NextResponse.json(
       { error: "Unauthorized" },

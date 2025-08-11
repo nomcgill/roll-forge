@@ -1,53 +1,71 @@
-import { render, screen, fireEvent, waitFor } from '@testing-library/react'
-import CharacterForm from '@/components/CharacterForm'
+import { render, screen, fireEvent, waitFor } from "@testing-library/react";
+import CharacterForm from "@/components/CharacterForm";
 
-describe('CharacterForm', () => {
-    beforeEach(() => {
-        global.fetch = jest.fn(() =>
-            Promise.resolve({
-                ok: true,
-                json: () => Promise.resolve({ success: true }),
+// Mock router.push
+const push = jest.fn();
+jest.mock("next/navigation", () => ({
+    useRouter: () => ({ push }),
+}));
+
+let fetchMock: jest.Mock;
+
+beforeEach(() => {
+    jest.clearAllMocks();
+    fetchMock = jest.fn();
+    // Attach a mock fetch so tests can call it
+    (global as any).fetch = fetchMock;
+});
+
+afterAll(() => {
+    // Clean up if you want to be strict
+    // delete (global as any).fetch;
+});
+
+describe("CharacterForm", () => {
+    it("renders name + avatar inputs and submit button", () => {
+        render(<CharacterForm />);
+        expect(screen.getByLabelText(/name/i)).toBeInTheDocument();
+        expect(screen.getByLabelText(/avatar url \(optional\)/i)).toBeInTheDocument();
+        expect(screen.getByRole("button", { name: /create/i })).toBeInTheDocument();
+    });
+
+    it("submits and redirects to Location on 201", async () => {
+        fetchMock.mockResolvedValueOnce({
+            status: 201,
+            // Keep it simple; no need for Headers()
+            headers: { get: (k: string) => (k.toLowerCase() === "location" ? "/characters/char_ok" : null) },
+            json: async () => ({ id: "char_ok" }),
+        });
+
+        render(<CharacterForm />);
+        fireEvent.change(screen.getByLabelText(/name/i), { target: { value: "Test Hero" } });
+        fireEvent.change(screen.getByLabelText(/avatar url/i), { target: { value: "https://avatar.url/image.png" } });
+        fireEvent.click(screen.getByRole("button", { name: /create/i }));
+
+        await waitFor(() => expect(push).toHaveBeenCalledWith("/characters/char_ok"));
+        expect(fetchMock).toHaveBeenCalledWith(
+            "/api/characters",
+            expect.objectContaining({
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({ name: "Test Hero", avatarUrl: "https://avatar.url/image.png" }),
             })
-        ) as jest.Mock
-    })
+        );
+    });
 
-    afterEach(() => {
-        jest.restoreAllMocks()
-    })
+    it("shows server validation error on 422", async () => {
+        fetchMock.mockResolvedValueOnce({
+            status: 422,
+            headers: { get: () => null },
+            json: async () => ({
+                issues: { fieldErrors: { name: ["Name is required"] }, formErrors: [] },
+            }),
+        });
 
-    it('renders name and avatar input fields and submit button', () => {
-        render(<CharacterForm />)
+        render(<CharacterForm />);
+        fireEvent.change(screen.getByLabelText(/name/i), { target: { value: "X" } });
+        fireEvent.click(screen.getByRole("button", { name: /create/i }));
 
-        expect(screen.getByPlaceholderText('Character Name')).toBeInTheDocument()
-        expect(screen.getByPlaceholderText('Avatar URL (optional)')).toBeInTheDocument()
-        expect(screen.getByRole('button', { name: /create character/i })).toBeInTheDocument()
-    })
-
-    it('submits character data and calls fetch with correct payload', async () => {
-        render(<CharacterForm />)
-
-        fireEvent.change(screen.getByPlaceholderText('Character Name'), {
-            target: { value: 'Test Hero' },
-        })
-
-        fireEvent.change(screen.getByPlaceholderText('Avatar URL (optional)'), {
-            target: { value: 'https://avatar.url/image.png' },
-        })
-
-        fireEvent.click(screen.getByRole('button', { name: /create character/i }))
-
-        await waitFor(() =>
-            expect(global.fetch).toHaveBeenCalledWith(
-                '/api/characters',
-                expect.objectContaining({
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({
-                        name: 'Test Hero',
-                        avatarUrl: 'https://avatar.url/image.png',
-                    }),
-                })
-            )
-        )
-    })
-})
+        await waitFor(() => expect(screen.getByRole("alert")).toHaveTextContent("Name is required"));
+    });
+});

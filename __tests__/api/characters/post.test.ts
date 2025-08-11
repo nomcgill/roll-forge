@@ -1,68 +1,65 @@
-// __tests__/api/characters/post.test.ts
-import { getServerSession } from "next-auth";
-
-jest.mock("next/server", () => ({
-  NextResponse: {
-    json: (data: any, init?: { status?: number }) => ({
-      status: init?.status ?? 200,
-      json: async () => data,
-    }),
-  },
+const mockGetServerSession = jest.fn();
+jest.mock("next-auth", () => ({
+  getServerSession: (...args: unknown[]) => mockGetServerSession(...args),
 }));
+jest.mock("@/lib/auth", () => ({ authOptions: {} as unknown }));
 
+const mockCreate = jest.fn();
 jest.mock("@/lib/prisma", () => ({
+  __esModule: true,
   prisma: {
-    user: { findUnique: jest.fn() },
-    character: { create: jest.fn() },
+    character: {
+      create: (...args: unknown[]) => mockCreate(...args),
+    },
   },
 }));
-
-jest.mock("next-auth", () => {
-  const actual = jest.requireActual("next-auth");
-  return { ...actual, getServerSession: jest.fn() };
-});
 
 import { POST } from "@/app/api/characters/POST";
 
+function makeReq(body: any) {
+  return new Request("http://localhost/api/characters", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(body),
+  });
+}
+
 describe("POST /api/characters", () => {
-  it("returns 401 when not authenticated", async () => {
-    (getServerSession as jest.Mock).mockResolvedValue(null);
+  beforeEach(() => {
+    jest.clearAllMocks();
+  });
 
-    const req = { json: async () => ({ name: "Hero" }) } as any;
-    const res = await POST(req);
+  it("401 when unauthenticated", async () => {
+    mockGetServerSession.mockResolvedValueOnce(null);
+    const res = await POST(makeReq({ name: "A" }));
     expect(res.status).toBe(401);
+    expect(mockCreate).not.toHaveBeenCalled();
   });
 
-  it("returns 400 when name is missing", async () => {
-    (getServerSession as jest.Mock).mockResolvedValue({
-      user: { email: "test@example.com" },
-    });
-
-    const req = { json: async () => ({}) } as any; // no name
-    const res = await POST(req);
-    expect(res.status).toBe(400);
+  it("422 when validation fails", async () => {
+    mockGetServerSession.mockResolvedValueOnce({ user: { id: "user_abc" } });
+    const res = await POST(makeReq({ name: "" }));
+    expect(res.status).toBe(422);
+    expect(mockCreate).not.toHaveBeenCalled();
   });
 
-  it("creates character when valid", async () => {
-    (getServerSession as jest.Mock).mockResolvedValue({
-      user: { email: "test@example.com" },
-    });
-
-    const { prisma } = await import("@/lib/prisma");
-    (prisma.user.findUnique as jest.Mock).mockResolvedValue({ id: "user123" });
-    (prisma.character.create as jest.Mock).mockResolvedValue({
-      id: "char123",
-      name: "Hero",
+  it("201 with Location when created", async () => {
+    mockGetServerSession.mockResolvedValueOnce({ user: { id: "user_abc" } });
+    mockCreate.mockResolvedValueOnce({
+      id: "char_ok",
+      name: "Okie",
       avatarUrl: null,
+      userId: "user_abc",
     });
 
-    const req = {
-      json: async () => ({ name: "Hero", avatarUrl: null }),
-    } as any;
-    const res = await POST(req);
-    const json = await res.json();
-
+    const res = await POST(makeReq({ name: "Okie", avatarUrl: "" }));
     expect(res.status).toBe(201);
-    expect(json).toEqual({ id: "char123", name: "Hero", avatarUrl: null });
+    expect(res.headers.get("Location")).toBe("/characters/char_ok");
+    expect(await res.json()).toEqual({
+      id: "char_ok",
+      name: "Okie",
+      avatarUrl: null,
+      userId: "user_abc",
+    });
   });
 });
