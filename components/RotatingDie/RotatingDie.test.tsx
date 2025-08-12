@@ -4,8 +4,7 @@
 import React from 'react';
 import { render, screen, cleanup } from '@testing-library/react';
 
-// Lightweight mock so jsdom doesn't need WebGL.
-// Keeps tests fast and avoids touching global setup.
+// JSDOM-safe mock for 'three'
 jest.mock('three', () => {
     const createCanvas = () => {
         const canvas = document.createElement('canvas');
@@ -18,10 +17,12 @@ jest.mock('three', () => {
         add: jest.fn(),
         remove: jest.fn(),
     }));
+
     const PerspectiveCamera = jest.fn().mockImplementation(() => ({
         position: { z: 0 },
         updateProjectionMatrix: jest.fn(),
     }));
+
     const WebGLRenderer = jest.fn().mockImplementation(() => {
         const domElement = createCanvas();
         return {
@@ -31,34 +32,54 @@ jest.mock('three', () => {
             render: jest.fn(),
             dispose: jest.fn(),
             domElement,
+            // optional props your component may touch in future
+            outputColorSpace: undefined,
+            outputEncoding: undefined,
         };
     });
-    const AmbientLight = jest.fn();
-    const DirectionalLight = jest.fn();
+
+    const AmbientLight = jest.fn().mockImplementation(() => ({}));
+
+    // IMPORTANT: Provide position.set so dir.position.set(...) works
+    const DirectionalLight = jest.fn().mockImplementation(() => ({
+        position: { set: jest.fn() },
+    }));
+
     const DodecahedronGeometry = jest.fn().mockImplementation(() => ({
         dispose: jest.fn(),
     }));
+
     const MeshStandardMaterial = jest.fn().mockImplementation(() => ({
         dispose: jest.fn(),
     }));
+
     const Mesh = jest.fn().mockImplementation(() => ({
         rotation: { x: 0, y: 0, z: 0 },
         rotateOnAxis: jest.fn(),
     }));
+
     const EdgesGeometry = jest.fn().mockImplementation(() => ({
         dispose: jest.fn(),
     }));
+
     const LineBasicMaterial = jest.fn().mockImplementation(() => ({
         dispose: jest.fn(),
     }));
-    const LineSegments = jest.fn().mockImplementation(() => ({}));
+
+    // IMPORTANT: Provide rotation.copy so wire.rotation.copy(...) works
+    const LineSegments = jest.fn().mockImplementation(() => ({
+        rotation: { copy: jest.fn() },
+    }));
+
     const Vector3 = jest.fn().mockImplementation(() => ({
         normalize: jest.fn().mockReturnThis(),
     }));
+
     const Clock = jest.fn().mockImplementation(() => ({
         getDelta: jest.fn().mockReturnValue(0.016),
     }));
 
+    // constants for cross-version color management (if referenced)
     const SRGBColorSpace = 3001;
     const sRGBEncoding = 3001;
 
