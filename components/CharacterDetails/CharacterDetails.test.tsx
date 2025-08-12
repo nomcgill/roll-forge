@@ -1,38 +1,61 @@
-import { render, screen } from '@testing-library/react';
-import CharacterDetails from './CharacterDetails';
+import { render, screen } from "@testing-library/react";
+import CharacterDetails from "./CharacterDetails";
 
-describe('CharacterDetails', () => {
-    const baseCharacter = {
-        id: '123',
-        name: 'Mock Hero',
-        avatarUrl: 'https://example.com/avatar.png',
-        userId: 'user-1',
-        createdAt: new Date('2024-01-01T00:00:00Z'),
-        updatedAt: new Date('2024-01-02T00:00:00Z'),
-    };
+// Mock the dropdown to keep this test focused on the header + avatar
+jest.mock("./EditCharacterDropdown", () => ({
+    __esModule: true,
+    default: () => <button type="button">Edit Character</button>,
+}));
 
-    it('renders the character name and avatar', () => {
-        render(<CharacterDetails character={baseCharacter} />);
+describe("CharacterDetails (a11y-friendly)", () => {
+    it("renders the character name and avatar image when present", () => {
+        render(
+            <CharacterDetails
+                character={{
+                    id: "char_1",
+                    name: "Mock Hero",
+                    avatarUrl: "https://example.com/avatar.png",
+                    preferences: null,
+                }}
+            />
+        );
 
-        expect(screen.getByText(baseCharacter.name)).toBeInTheDocument();
-        expect(
-            screen.getByAltText(`${baseCharacter.name}'s avatar`)
-        ).toBeInTheDocument();
+        // Heading by accessible role + name
+        expect(screen.getByRole("heading", { name: "Mock Hero" })).toBeInTheDocument();
+
+        // Avatar image by role + accessible name
+        expect(screen.getByRole("img", { name: "Avatar of Mock Hero" })).toBeInTheDocument();
+
+        // No fallback when avatar exists
+        expect(screen.queryByTestId("avatar-fallback")).toBeNull();
+
+        // Edit control present (mocked)
+        expect(screen.getByRole("button", { name: /edit character/i })).toBeInTheDocument();
     });
 
-    it('renders without avatar when avatarUrl is null', () => {
-        const characterWithoutAvatar = {
-            ...baseCharacter,
-            id: '456',
-            name: 'No Avatar Hero',
-            avatarUrl: null,
-        };
+    it("renders a unique, aria-hidden fallback when no avatar", () => {
+        render(
+            <CharacterDetails
+                character={{
+                    id: "char_2",
+                    name: "No Avatar Hero",
+                    avatarUrl: null,
+                    preferences: { theme: "dark" },
+                }}
+            />
+        );
 
-        render(<CharacterDetails character={characterWithoutAvatar} />);
+        // Heading by role
+        expect(screen.getByRole("heading", { name: "No Avatar Hero" })).toBeInTheDocument();
 
-        expect(screen.getByText('No Avatar Hero')).toBeInTheDocument();
-        expect(
-            screen.queryByAltText(`No Avatar Hero's avatar`)
-        ).not.toBeInTheDocument();
+        // Fallback visible but not an accessible name
+        const fallback = screen.getByTestId("avatar-fallback");
+        expect(fallback).toHaveTextContent(/no avatar/i);
+
+        // No <img> when avatar is missing
+        expect(screen.queryByRole("img", { name: /avatar of/i })).toBeNull();
+
+        // Edit control present (mocked)
+        expect(screen.getByRole("button", { name: /edit character/i })).toBeInTheDocument();
     });
 });
