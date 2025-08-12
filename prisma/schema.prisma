@@ -8,9 +8,9 @@ datasource db {
 }
 
 model User {
-  id            String    @id @default(cuid())
+  id            String      @id @default(cuid())
   name          String?
-  email         String?   @unique
+  email         String?     @unique
   emailVerified DateTime?
   passwordHash  String?
   image         String?
@@ -20,7 +20,7 @@ model User {
 }
 
 model Account {
-  id                String   @id @default(cuid())
+  id                String  @id @default(cuid())
   userId            String
   type              String
   provider          String
@@ -64,6 +64,7 @@ model Character {
   rollTemplates RollTemplate[]
   createdAt     DateTime       @default(now())
   updatedAt     DateTime       @updatedAt
+  preferences   Json?
 }
 
 model RollTemplate {
