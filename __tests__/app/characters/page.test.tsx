@@ -1,5 +1,3 @@
-// __tests__/app/characters/page.test.tsx
-
 const mockGetServerSession = jest.fn();
 jest.mock("next-auth", () => ({
     getServerSession: (...args: unknown[]) => mockGetServerSession(...args),
