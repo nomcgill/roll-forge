@@ -4,14 +4,25 @@
 import React from 'react';
 import { render, screen, cleanup } from '@testing-library/react';
 
-// JSDOM-safe mock for 'three'
+/** Stub all canvas 2D contexts so getContext('2d') never returns null */
+const ctxStub = {
+    clearRect: jest.fn(),
+    beginPath: jest.fn(),
+    arc: jest.fn(),
+    fill: jest.fn(),
+    fillRect: jest.fn(),
+    fillText: jest.fn(),
+    createRadialGradient: jest.fn(() => ({ addColorStop: jest.fn() })),
+} as unknown as CanvasRenderingContext2D;
+
+Object.defineProperty(HTMLCanvasElement.prototype, 'getContext', {
+    configurable: true,
+    value: jest.fn(() => ctxStub),
+});
+
+// Mock the subset of Three used by RotatingDie
 jest.mock('three', () => {
-    const createCanvas = () => {
-        const canvas = document.createElement('canvas');
-        // @ts-ignore
-        canvas.getContext = () => ({});
-        return canvas;
-    };
+    const makeCanvas = () => document.createElement('canvas');
 
     const Scene = jest.fn().mockImplementation(() => ({
         add: jest.fn(),
@@ -24,7 +35,7 @@ jest.mock('three', () => {
     }));
 
     const WebGLRenderer = jest.fn().mockImplementation(() => {
-        const domElement = createCanvas();
+        const domElement = makeCanvas();
         return {
             setClearColor: jest.fn(),
             setPixelRatio: jest.fn(),
@@ -32,43 +43,45 @@ jest.mock('three', () => {
             render: jest.fn(),
             dispose: jest.fn(),
             domElement,
-            // optional props your component may touch in future
             outputColorSpace: undefined,
             outputEncoding: undefined,
         };
     });
 
     const AmbientLight = jest.fn().mockImplementation(() => ({}));
-
-    // IMPORTANT: Provide position.set so dir.position.set(...) works
     const DirectionalLight = jest.fn().mockImplementation(() => ({
         position: { set: jest.fn() },
     }));
 
-    const DodecahedronGeometry = jest.fn().mockImplementation(() => ({
-        dispose: jest.fn(),
+    const DodecahedronGeometry = jest.fn().mockImplementation(() => ({ dispose: jest.fn() }));
+    const PlaneGeometry = jest.fn().mockImplementation(() => ({ dispose: jest.fn() }));
+    const EdgesGeometry = jest.fn().mockImplementation(() => ({ dispose: jest.fn() }));
+    const BufferGeometry = jest.fn().mockImplementation(() => ({ setAttribute: jest.fn(), dispose: jest.fn() }));
+    const Float32BufferAttribute = jest.fn().mockImplementation(() => ({}));
+
+    const MeshStandardMaterial = jest.fn().mockImplementation(() => ({ dispose: jest.fn() }));
+    const MeshBasicMaterial = jest.fn().mockImplementation(() => ({ dispose: jest.fn() }));
+    const LineBasicMaterial = jest.fn().mockImplementation(() => ({ dispose: jest.fn() }));
+    const PointsMaterial = jest.fn().mockImplementation(() => ({ dispose: jest.fn() }));
+
+    const CanvasTexture = jest.fn().mockImplementation(() => ({ needsUpdate: true, anisotropy: 0, dispose: jest.fn() }));
+
+    // Capture constructor args so mesh.material exists (array of materials in this component)
+    const Mesh = jest.fn().mockImplementation((_geometry?: any, material?: any) => ({
+        rotation: { x: 0, y: 0, z: 0, copy: jest.fn() },
+        position: { set: jest.fn(), copy: jest.fn() },
+        lookAt: jest.fn(),
+        renderOrder: 0,
+        geometry: { dispose: jest.fn() },
+        material, // <-- important for cleanup path
     }));
 
-    const MeshStandardMaterial = jest.fn().mockImplementation(() => ({
-        dispose: jest.fn(),
-    }));
-
-    const Mesh = jest.fn().mockImplementation(() => ({
-        rotation: { x: 0, y: 0, z: 0 },
-        rotateOnAxis: jest.fn(),
-    }));
-
-    const EdgesGeometry = jest.fn().mockImplementation(() => ({
-        dispose: jest.fn(),
-    }));
-
-    const LineBasicMaterial = jest.fn().mockImplementation(() => ({
-        dispose: jest.fn(),
-    }));
-
-    // IMPORTANT: Provide rotation.copy so wire.rotation.copy(...) works
     const LineSegments = jest.fn().mockImplementation(() => ({
         rotation: { copy: jest.fn() },
+    }));
+
+    const Points = jest.fn().mockImplementation(() => ({
+        rotation: { x: 0, y: 0, z: 0 },
     }));
 
     const Vector3 = jest.fn().mockImplementation(() => ({
@@ -79,7 +92,7 @@ jest.mock('three', () => {
         getDelta: jest.fn().mockReturnValue(0.016),
     }));
 
-    // constants for cross-version color management (if referenced)
+    const AdditiveBlending = 2;
     const SRGBColorSpace = 3001;
     const sRGBEncoding = 3001;
 
@@ -90,13 +103,21 @@ jest.mock('three', () => {
         AmbientLight,
         DirectionalLight,
         DodecahedronGeometry,
-        MeshStandardMaterial,
-        Mesh,
+        PlaneGeometry,
         EdgesGeometry,
+        BufferGeometry,
+        Float32BufferAttribute,
+        MeshStandardMaterial,
+        MeshBasicMaterial,
         LineBasicMaterial,
+        PointsMaterial,
+        CanvasTexture,
+        Mesh,
         LineSegments,
+        Points,
         Vector3,
         Clock,
+        AdditiveBlending,
         SRGBColorSpace,
         sRGBEncoding,
     };
