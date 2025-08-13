@@ -40,11 +40,13 @@ export default function RotatingDie({
         renderer.setSize(container.clientWidth, container.clientHeight);
 
         // Cross-version color space compatibility
-        const rAny = renderer as any;
-        if (typeof rAny.outputColorSpace !== 'undefined' && (THREE as any).SRGBColorSpace) {
+        const rAny = renderer as any; // TypeScript workaround for THREE.js version differences
+        if ('outputColorSpace' in rAny && (THREE as any).SRGBColorSpace) {
             rAny.outputColorSpace = (THREE as any).SRGBColorSpace;
-        } else if (typeof rAny.outputEncoding !== 'undefined' && (THREE as any).sRGBEncoding) {
-            rAny.outputEncoding = (THREE as any).sRGBEncoding;
+        } else if ('outputEncoding' in rAny) {
+            // Fallback for older three versions (<= r152-ish) that used outputEncoding.
+            // 3001 is the numeric value that used to be THREE.sRGBEncoding.
+            rAny.outputEncoding = 3001;
         }
 
         container.appendChild(renderer.domElement);

@@ -39,6 +39,10 @@ export const authOptions: NextAuthOptions = {
     }),
   ],
 
+  pages: {
+    signIn: "/", // the page that shows your RotatingDie + Google/Facebook buttons
+  },
+
   callbacks: {
     async signIn({ user, account, profile }) {
       console.log("🟢 Sign-in attempt:", { user, account, profile });
