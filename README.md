@@ -173,7 +173,7 @@
 
 ---
 
-## 8) Testing (planning only; you’ll request tests later)
+## 8) Testing (planning only)
 
 - **Unit**: roller (deterministic RNG injection), crit gating, Adv/Dis pairing, inheritance to first type.
 - **API**: CRUD happy paths + authz; validation failures.
