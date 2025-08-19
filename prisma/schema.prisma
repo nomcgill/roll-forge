@@ -61,18 +61,33 @@ model Character {
   avatarUrl     String?
   user          User           @relation(fields: [userId], references: [id])
   userId        String
-  rollTemplates RollTemplate[]
   createdAt     DateTime       @default(now())
   updatedAt     DateTime       @updatedAt
   preferences   Json?
+  actions      Action[]
+  modifiers    ActionModifier[]
 }
 
-model RollTemplate {
-  id          String    @id @default(cuid())
-  name        String
-  configJson  Json
-  character   Character @relation(fields: [characterId], references: [id])
-  characterId String
-  createdAt   DateTime  @default(now())
-  updatedAt   DateTime  @updatedAt
+model Action {
+  id           String    @id @default(cuid())
+  characterId  String
+  character    Character @relation(fields: [characterId], references: [id], onDelete: Cascade)
+  name         String    @db.VarChar(25)
+  favorite     Boolean   @default(false)
+  factorsJson  Json
+  createdAt    DateTime  @default(now())
+  updatedAt    DateTime  @updatedAt
+  @@index([characterId])
+}
+
+model ActionModifier {
+  id           String    @id @default(cuid())
+  characterId  String
+  character    Character @relation(fields: [characterId], references: [id], onDelete: Cascade)
+  name         String    @db.VarChar(25)
+  favorite     Boolean   @default(false)
+  factorsJson  Json
+  createdAt    DateTime  @default(now())
+  updatedAt    DateTime  @updatedAt
+  @@index([characterId])
 }
