@@ -9,6 +9,8 @@ import { prisma } from "@/lib/prisma";
 import { getUserId } from "@/lib/session";
 import type { ReactElement } from "react";
 import CharacterDetails from "@/components/CharacterDetails";
+import RollWorkspace from "@/components/roll/RollWorkspace";
+
 
 type CharacterPageProps = {
     // Next.js may provide async params; await before using.
@@ -33,5 +35,10 @@ export default async function CharacterPage({ params }: CharacterPageProps): Pro
         notFound();
     }
 
-    return <CharacterDetails character={character} />;
+    return (
+        <main className="px-4 py-4 md:px-6 lg:px-8">
+            <CharacterDetails character={character} />
+            <RollWorkspace characterId={id} />
+        </main>
+    );
 }
