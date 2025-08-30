@@ -30,9 +30,6 @@ export default function RollWorkspace({ characterId }: Props) {
     const [selectedPerActionMods, setSelectedPerActionMods] = useState<Record<string, boolean>>({});
     const [selectedPerTurnMods, setSelectedPerTurnMods] = useState<Record<string, boolean>>({});
 
-    // History presence (enables button even when no tallies)
-    const [hasHistory, setHasHistory] = useState(false);
-
     const prefs: CharacterPreferences = useMemo(() => {
         const p = character?.preferences;
         return {
@@ -95,7 +92,7 @@ export default function RollWorkspace({ characterId }: Props) {
     const hasAnyTallies = useMemo(() => {
         return Object.values(tallies).some(t => ("add" in t ? t.add : (t as any).adv + (t as any).normal + (t as any).disadv) > 0);
     }, [tallies]);
-    const canRoll = hasHistory || hasAnyTallies;
+    const canRoll = hasAnyTallies;
 
     return (
         <div className="w-full">
@@ -148,7 +145,7 @@ export default function RollWorkspace({ characterId }: Props) {
                 {/* History column */}
                 <section className="snap-start shrink-0 w-full md:w-auto md:pl-4">
                     <h1 className="text-xl md:text-2xl font-semibold mb-3 md:mb-4">Roll History</h1>
-                    <HistoryPane onHasHistoryChange={setHasHistory} />
+                    <HistoryPane />
                 </section>
             </div>
         </div>
