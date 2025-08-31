@@ -14,29 +14,30 @@ type Props = {
     preferences: CharacterPreferences;
     actions: ActionRecord[];
     modifiers: ModifierRecord[];
-    // selection state
-    tallies: Record<string, Tally>; // actionId -> tally
+    tallies: Record<string, Tally>;
     setTallies: (updater: (prev: Record<string, Tally>) => Record<string, Tally>) => void;
     selectedPerActionMods: Record<string, boolean>;
     setSelectedPerActionMods: (updater: (prev: Record<string, boolean>) => Record<string, boolean>) => void;
     selectedPerTurnMods: Record<string, boolean>;
     setSelectedPerTurnMods: (updater: (prev: Record<string, boolean>) => Record<string, boolean>) => void;
+
+    onCreateAction: () => void;
+    onCreateModifier: () => void;
+    onEditAction: (id: string) => void;
+    onEditModifier: (id: string) => void;
 };
 
-export default function ReadyPane({
-    preferences,
-    actions,
-    modifiers,
-    tallies,
-    setTallies,
-    selectedPerActionMods,
-    setSelectedPerActionMods,
-    selectedPerTurnMods,
-    setSelectedPerTurnMods,
-}: Props) {
+export default function ReadyPane(props: Props) {
+    const {
+        preferences, actions, modifiers,
+        tallies, setTallies,
+        selectedPerActionMods, setSelectedPerActionMods,
+        selectedPerTurnMods, setSelectedPerTurnMods,
+        onCreateAction, onCreateModifier, onEditAction, onEditModifier,
+    } = props;
+
     const followsAdv = preferences.followsAdvantageRules;
 
-    // Alphabetical sort; favorites are not pinned
     const sortedActions = useMemo(
         () => [...actions].sort((a, b) => a.name.localeCompare(b.name)),
         [actions]
@@ -50,14 +51,11 @@ export default function ReadyPane({
         [modifiers]
     );
 
-    // Preselect favorites & init tallies
     useEffect(() => {
         setTallies(prev => {
             const next = { ...prev };
             for (const a of actions) {
-                if (!(a.id in next)) {
-                    next[a.id] = followsAdv ? { disadv: 0, normal: 0, adv: 0 } : { add: 0 };
-                }
+                if (!(a.id in next)) next[a.id] = followsAdv ? { disadv: 0, normal: 0, adv: 0 } : { add: 0 };
             }
             return next;
         });
@@ -143,7 +141,10 @@ export default function ReadyPane({
         <div className="min-h-full flex flex-col">
             {/* Actions */}
             <section className="mb-6">
-                <h2 className="text-lg font-semibold mb-2">Actions</h2>
+                <div className="flex items-center justify-between">
+                    <h2 className="text-lg font-semibold mb-2">Actions</h2>
+                    <button onClick={onCreateAction} className="text-sm px-3 py-1 rounded-xl border border-slate-700 hover:bg-slate-900">+ New</button>
+                </div>
                 <ul className="space-y-3">
                     {sortedActions.map((a) => {
                         const t = tallies[a.id];
@@ -172,20 +173,18 @@ export default function ReadyPane({
                                         </div>
                                     </div>
 
-                                    {/* Tally buttons */}
+                                    {/* Tally buttons + Edit */}
                                     <div className="flex items-center gap-2 shrink-0">
                                         {!t ? null : isAddTally(t) ? (
-                                            <div className="flex items-center gap-2">
-                                                <LongPressBtn
-                                                    onClick={() => inc(a.id, "add")}
-                                                    onLongPress={() => dec(a.id, "add")}
-                                                    title="Tap to add; long-press or right-click to remove"
-                                                >
-                                                    Add {t.add}
-                                                </LongPressBtn>
-                                            </div>
+                                            <LongPressBtn
+                                                onClick={() => inc(a.id, "add")}
+                                                onLongPress={() => dec(a.id, "add")}
+                                                title="Tap to add; long-press or right-click to remove"
+                                            >
+                                                Add {t.add}
+                                            </LongPressBtn>
                                         ) : isAdvTally(t) ? (
-                                            <div className="flex items-center gap-2">
+                                            <>
                                                 <LongPressBtn
                                                     onClick={() => inc(a.id, "disadv")}
                                                     onLongPress={() => dec(a.id, "disadv")}
@@ -207,19 +206,20 @@ export default function ReadyPane({
                                                 >
                                                     Adv {t.adv}
                                                 </LongPressBtn>
-                                            </div>
+                                            </>
                                         ) : null}
+                                        <button onClick={() => onEditAction(a.id)} className="text-xs px-2 py-1 rounded border border-slate-700 hover:bg-slate-900">
+                                            Edit
+                                        </button>
                                     </div>
                                 </div>
 
-                                {/* Action damage preview (verbose list, no grouping/totals) */}
+                                {/* Damage preview (verbose list, no grouping/totals) */}
                                 {a.factorsJson.damage?.length > 0 && (
                                     <ul className="mt-3 text-sm text-slate-200 space-y-1">
                                         {a.factorsJson.damage.map((d, i) => (
                                             <li key={i}>
-                                                <span className="font-medium">
-                                                    {formatDamageLineType(d.type)}
-                                                </span>{" "}
+                                                <span className="font-medium">{formatDamageLineType(d.type)}</span>{" "}
                                                 {formatDamageDetails(d)}
                                             </li>
                                         ))}
@@ -233,7 +233,10 @@ export default function ReadyPane({
 
             {/* Modifiers */}
             <section className="mb-32">
-                <h2 className="text-lg font-semibold mb-2">Action Modifiers</h2>
+                <div className="flex items-center justify-between">
+                    <h2 className="text-lg font-semibold mb-2">Action Modifiers</h2>
+                    <button onClick={onCreateModifier} className="text-sm px-3 py-1 rounded-xl border border-slate-700 hover:bg-slate-900">+ New</button>
+                </div>
 
                 <h3 className="text-sm text-slate-300 mb-1">Per Action</h3>
                 <ul className="space-y-2 mb-4">
@@ -241,16 +244,18 @@ export default function ReadyPane({
                         <li key={m.id} className="flex items-center justify-between border border-slate-700 rounded-xl p-2 bg-slate-900/40">
                             <label className="flex items-center gap-2">
                                 <input
-                                    type="checkbox"
-                                    className="size-4 accent-slate-300"
+                                    type="checkbox" className="size-4 accent-slate-300"
                                     checked={!!selectedPerActionMods[m.id]}
-                                    onChange={(e) =>
-                                        setSelectedPerActionMods(prev => ({ ...prev, [m.id]: e.target.checked }))
-                                    }
+                                    onChange={(e) => setSelectedPerActionMods(prev => ({ ...prev, [m.id]: e.target.checked }))}
                                 />
                                 <span className="text-sm">{m.name}</span>
                             </label>
-                            <span className="text-[11px] text-slate-400">each attack</span>
+                            <div className="flex items-center gap-2">
+                                <span className="text-[11px] text-slate-400">each attack</span>
+                                <button onClick={() => onEditModifier(m.id)} className="text-xs px-2 py-1 rounded border border-slate-700 hover:bg-slate-900">
+                                    Edit
+                                </button>
+                            </div>
                         </li>
                     ))}
                 </ul>
@@ -261,16 +266,18 @@ export default function ReadyPane({
                         <li key={m.id} className="flex items-center justify-between border border-slate-700 rounded-xl p-2 bg-slate-900/40">
                             <label className="flex items-center gap-2">
                                 <input
-                                    type="checkbox"
-                                    className="size-4 accent-slate-300"
+                                    type="checkbox" className="size-4 accent-slate-300"
                                     checked={!!selectedPerTurnMods[m.id]}
-                                    onChange={(e) =>
-                                        setSelectedPerTurnMods(prev => ({ ...prev, [m.id]: e.target.checked }))
-                                    }
+                                    onChange={(e) => setSelectedPerTurnMods(prev => ({ ...prev, [m.id]: e.target.checked }))}
                                 />
                                 <span className="text-sm">{m.name}</span>
                             </label>
-                            <span className="text-[11px] text-slate-400">per turn</span>
+                            <div className="flex items-center gap-2">
+                                <span className="text-[11px] text-slate-400">per turn</span>
+                                <button onClick={() => onEditModifier(m.id)} className="text-xs px-2 py-1 rounded border border-slate-700 hover:bg-slate-900">
+                                    Edit
+                                </button>
+                            </div>
                         </li>
                     ))}
                 </ul>
@@ -286,10 +293,7 @@ function buildActionSubtitle(a: ActionRecord): string {
         const stat = th.static ?? 0;
         const sign = th.signStatic ?? 1;
         const dice = th.dice?.map(d => `${d.count}d${d.size}`).join(" + ");
-        const hitBits = [
-            dice ? dice : null,
-            stat ? `${sign > 0 ? "+" : "-"} ${Math.abs(stat)}` : null,
-        ].filter(Boolean);
+        const hitBits = [dice ? dice : null, stat ? `${sign > 0 ? "+" : "-"} ${Math.abs(stat)}` : null].filter(Boolean);
         if (hitBits.length) parts.push(`Attack: ${hitBits.join(" + ")}`);
     }
     const dmg = a.factorsJson.damage ?? [];
@@ -297,10 +301,7 @@ function buildActionSubtitle(a: ActionRecord): string {
         const dice = d.dice?.map(x => `${x.count}d${x.size}`).join(" + ");
         const stat = d.static ?? 0;
         const sign = d.signStatic ?? 1;
-        const bits = [
-            dice ? dice : null,
-            stat ? `${sign > 0 ? "+" : "-"} ${Math.abs(stat)}` : null,
-        ].filter(Boolean);
+        const bits = [dice ? dice : null, stat ? `${sign > 0 ? "+" : "-"} ${Math.abs(stat)}` : null].filter(Boolean);
         const type = formatDamageLineType(d.type);
         if (bits.length) parts.push(`${bits.join(" + ")} ${type}`);
     }
@@ -308,16 +309,13 @@ function buildActionSubtitle(a: ActionRecord): string {
 }
 
 function formatDamageLineType(type: string | null) {
-    return type === null ? "None (base)" : type;
+    return type === null ? "leave blank" : type;
 }
 
 function formatDamageDetails(d: NonNullable<ActionRecord["factorsJson"]["damage"]>[number]) {
     const dice = d.dice?.map(x => `${x.count}d${x.size}`).join(" + ");
     const stat = d.static ?? 0;
     const sign = d.signStatic ?? 1;
-    const bits = [
-        dice ? dice : null,
-        stat ? `${sign > 0 ? "+" : "-"} ${Math.abs(stat)}` : null,
-    ].filter(Boolean);
+    const bits = [dice ? dice : null, stat ? `${sign > 0 ? "+" : "-"} ${Math.abs(stat)}` : null].filter(Boolean);
     return bits.length ? bits.join(" + ") : "—";
 }
