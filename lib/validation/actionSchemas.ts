@@ -1,6 +1,8 @@
 import { z } from "zod";
 
-const dieSize = z.union([
+/** helpers */
+const Signed = z.union([z.literal(1), z.literal(-1)]); // +1 | -1
+const DieSize = z.union([
   z.literal(4),
   z.literal(6),
   z.literal(8),
@@ -10,98 +12,137 @@ const dieSize = z.union([
   z.literal(100),
 ]);
 
-const signed = z.union([z.literal(1), z.literal(-1)]);
+const MAX_DICE_ROWS = 10;
+const MAX_DAMAGE_LINES = 10;
 
-const diceEntry = z.object({
-  count: z.number().int().positive(),
-  size: dieSize,
-  signDice: signed.optional(),
+/** Dice entries */
+const DiceEntryForActionToHit = z
+  .object({
+    count: z.number().int().min(1).max(99),
+    size: DieSize,
+    signDice: Signed.default(1),
+    canCrit: z.boolean().optional(), // UI ensures only for d20 when critRules != null
+  })
+  .superRefine((val, ctx) => {
+    if (val.canCrit && val.size !== 20) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ["canCrit"],
+        message: "canCrit is only allowed for d20",
+      });
+    }
+  });
+
+const DiceEntryNoCrit = z.object({
+  count: z.number().int().min(1).max(99),
+  size: DieSize,
+  signDice: Signed.default(1),
+  // no canCrit here
 });
 
-const toHitSchema = z.object({
-  static: z.number().int().optional(),
-  signStatic: signed.optional(),
-  dice: z
-    .array(
-      diceEntry.extend({
-        // canCrit only relevant for ACTION toHit; UI will gate to d20 when critRules enabled
-        canCrit: z.boolean().optional(),
-      })
-    )
-    .optional(),
+/** Common: conditions */
+const Conditions = z
+  .object({
+    wielding: z.enum(["weapon", "unarmed"]).optional(),
+    distance: z.enum(["melee", "ranged"]).optional(),
+    spell: z.boolean().optional(),
+  })
+  .partial();
+
+/** ACTION: factorsJson */
+const ActionDamageLine = z.object({
+  type: z.string().max(18).nullable(), // null allowed; shows as "Undefined" in totals
+  static: z.number().int().optional().default(0),
+  signStatic: Signed.default(1),
+  dice: z.array(DiceEntryNoCrit).max(MAX_DICE_ROWS).optional().default([]),
 });
 
-const damageLineBase = z.object({
-  type: z.string().min(1).nullable(), // null = "None (base)" (inherit first action type)
-  static: z.number().int().optional(),
-  signStatic: signed.optional(),
-  dice: z.array(diceEntry).optional(),
+const ActionFactors = z.object({
+  conditions: Conditions.optional().default({}),
+  toHit: z
+    .object({
+      static: z.number().int().optional().default(0),
+      signStatic: Signed.default(1),
+      dice: z
+        .array(DiceEntryForActionToHit)
+        .max(MAX_DICE_ROWS)
+        .optional()
+        .default([]),
+    })
+    .superRefine((v, ctx) => {
+      // must have either static != 0 or at least one die
+      const hasSomething = (v.static ?? 0) !== 0 || (v.dice?.length ?? 0) > 0;
+      if (!hasSomething) {
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          path: ["dice"],
+          message:
+            "Provide at least one die or a non-zero static bonus for to-hit",
+        });
+      }
+    }),
+  damage: z
+    .array(ActionDamageLine)
+    .max(MAX_DAMAGE_LINES)
+    .optional()
+    .default([]),
+  favorite: z.boolean().optional().default(false),
 });
 
-export const actionCreateSchema = z.object({
-  name: z.string().min(1).max(25),
-  favorite: z.boolean().optional(),
-  rollDetails: z.object({
-    conditions: z
-      .object({
-        wielding: z.enum(["weapon", "unarmed"]).optional(),
-        distance: z.enum(["melee", "ranged"]).optional(),
-        spell: z.boolean().optional(),
-      })
-      .optional(),
-    toHit: toHitSchema.optional(),
+/** MODIFIER: factorsJson */
+const ModifierDamageLine = z.object({
+  type: z.string().max(18).nullable(), // null allowed ONLY when eachAttack = true
+  source: z.string().max(18).optional(),
+  static: z.number().int().optional().default(0),
+  signStatic: Signed.default(1),
+  dice: z.array(DiceEntryNoCrit).max(MAX_DICE_ROWS).optional().default([]),
+});
+
+const ActionModifierFactors = z
+  .object({
+    eachAttack: z.boolean().default(true),
+    conditions: Conditions.optional().default({}),
+    attackImpact: z.object({
+      static: z.number().int().optional().default(0),
+      signStatic: Signed.default(1),
+      dice: z.array(DiceEntryNoCrit).max(MAX_DICE_ROWS).optional().default([]),
+    }),
     damage: z
-      .array(
-        // For Actions, do not show "source" in UI, but allow it in payload harmlessly.
-        damageLineBase.extend({
-          source: z.string().max(18).optional(),
-        })
-      )
+      .array(ModifierDamageLine)
+      .max(MAX_DAMAGE_LINES)
+      .optional()
       .default([]),
-    favorite: z.boolean().optional(),
-  }),
+    favorite: z.boolean().optional().default(false),
+  })
+  .superRefine((v, ctx) => {
+    // Enforce: when Per Turn (eachAttack=false), damage.type cannot be null ("None (base)" disallowed)
+    if (!v.eachAttack) {
+      v.damage?.forEach((row, idx) => {
+        if (row.type === null) {
+          ctx.addIssue({
+            code: z.ZodIssueCode.custom,
+            path: ["damage", idx, "type"],
+            message:
+              'For "Per Turn" modifiers, pick a damage type (cannot be "None (base)")',
+          });
+        }
+      });
+    }
+  });
+
+/** Top-level payloads */
+export const actionCreateSchema = z.object({
+  name: z.string().min(1, "Required").max(25, "Must be ≤ 25 characters"),
+  favorite: z.boolean().optional().default(false),
+  factorsJson: ActionFactors,
 });
 
 export const actionModifierCreateSchema = z.object({
-  name: z.string().min(1).max(25),
-  favorite: z.boolean().optional(),
-  rollDetails: z
-    .object({
-      eachAttack: z.boolean(), // true=per-action, false=per-turn
-      conditions: z
-        .object({
-          wielding: z.enum(["weapon", "unarmed"]).optional(),
-          distance: z.enum(["melee", "ranged"]).optional(),
-          spell: z.boolean().optional(),
-        })
-        .optional(),
-      attackImpact: z
-        .object({
-          static: z.number().int().optional(),
-          signStatic: signed.optional(),
-          dice: z.array(diceEntry).optional(), // cannot crit; no canCrit key here
-        })
-        .optional(),
-      damage: z
-        .array(
-          damageLineBase.extend({
-            source: z.string().max(18).optional(),
-          })
-        )
-        .default([]),
-      favorite: z.boolean().optional(),
-    })
-    .superRefine((val, ctx) => {
-      // Enforce: type:null ("None (base)") allowed ONLY when eachAttack=true
-      for (const [idx, line] of (val.damage ?? []).entries()) {
-        if (line.type === null && !val.eachAttack) {
-          ctx.addIssue({
-            code: z.ZodIssueCode.custom,
-            message:
-              'type:null ("None (base)") is only allowed when eachAttack=true',
-            path: ["damage", idx, "type"],
-          });
-        }
-      }
-    }),
+  name: z.string().min(1, "Required").max(25, "Must be ≤ 25 characters"),
+  favorite: z.boolean().optional().default(false),
+  factorsJson: ActionModifierFactors,
 });
+
+/** also export the factor schemas in case server routes need them */
+export type ActionFactorsType = z.infer<typeof ActionFactors>;
+export type ActionModifierFactorsType = z.infer<typeof ActionModifierFactors>;
