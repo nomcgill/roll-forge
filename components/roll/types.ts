@@ -1,11 +1,41 @@
+// components/roll/types.ts
 export type DieSize = 4 | 6 | 8 | 10 | 12 | 20 | 100;
 export type Signed = 1 | -1;
 
-export type ToHitDie = {
+export type RollMode = "normal" | "adv" | "disadv";
+export type Tally = { normal: number; adv: number; disadv: number };
+
+export type CritRules = "5e-double" | null;
+
+export type CharacterPreferences = {
+  advRules?: boolean; // default true
+  critRules: CritRules; // "5e-double" enables D&D 5e crits; null disables all crit logic/UI
+  critThreshold: number; // default 20
+  uniqueDamageTypes?: string[]; // custom per-character ontology
+};
+
+export type DiceEntryToHit = {
   count: number;
   size: DieSize;
-  signDice?: Signed;
-  canCrit?: boolean;
+  signDice: Signed;
+  canCrit?: boolean; // only respected for d20
+};
+
+export type DiceEntry = {
+  count: number;
+  size: DieSize;
+  signDice: Signed;
+};
+
+export type ActionDamageLine = {
+  type: string | null; // null allowed for Actions ("Undefined" bucket in totals)
+  static?: number;
+  signStatic: Signed;
+  dice?: DiceEntry[];
+};
+
+export type ModifierDamageLine = ActionDamageLine & {
+  source?: string; // ≤18 chars; shown when type is null
 };
 
 export type ActionFactors = {
@@ -14,49 +44,29 @@ export type ActionFactors = {
     distance?: "melee" | "ranged";
     spell?: boolean;
   };
-  toHit?: {
+  toHit: {
     static?: number;
-    signStatic?: Signed;
-    dice?: ToHitDie[];
+    signStatic: Signed;
+    dice?: DiceEntryToHit[];
   };
-  damage: Array<{
-    type: string | null; // null = "None (base)" → inherits first action type
-    static?: number;
-    signStatic?: Signed;
-    dice?: Array<{ count: number; size: DieSize; signDice?: Signed }>;
-  }>;
+  damage?: ActionDamageLine[];
   favorite?: boolean;
 };
 
 export type ActionModifierFactors = {
-  eachAttack: boolean; // true = per-action, false = per-turn
-  conditions?: ActionFactors["conditions"];
+  eachAttack: boolean; // true=per-action, false=per-turn
+  conditions?: {
+    wielding?: "weapon" | "unarmed";
+    distance?: "melee" | "ranged";
+    spell?: boolean;
+  };
   attackImpact?: {
     static?: number;
-    signStatic?: Signed;
-    dice?: Array<{ count: number; size: DieSize; signDice?: Signed }>;
+    signStatic: Signed;
+    dice?: DiceEntry[]; // cannot crit; still respects adv/disadv pairing
   };
-  damage: Array<{
-    type: string | null; // null allowed ONLY when eachAttack=true
-    source?: string; // <=18 chars; shows when type is null
-    static?: number;
-    signStatic?: Signed;
-    dice?: Array<{ count: number; size: DieSize; signDice?: Signed }>;
-  }>;
+  damage?: ModifierDamageLine[];
   favorite?: boolean;
-};
-
-export type CharacterPreferences = {
-  followsAdvantageRules: boolean;
-  critRules: "5e-double-damage-dice" | null;
-  critThreshold: number; // 0–20
-  uniqueDamageTypes: string[];
-};
-
-export type CharacterRecord = {
-  id: string;
-  name?: string | null;
-  preferences?: CharacterPreferences | null;
 };
 
 export type ActionRecord = {
@@ -65,6 +75,7 @@ export type ActionRecord = {
   name: string;
   favorite: boolean;
   factorsJson: ActionFactors;
+  createdAt?: string | Date;
 };
 
 export type ModifierRecord = {
@@ -73,24 +84,41 @@ export type ModifierRecord = {
   name: string;
   favorite: boolean;
   factorsJson: ActionModifierFactors;
+  createdAt?: string | Date;
 };
 
-// ----- Tally union + guards -----
-export type AddTally = { add: number };
-export type AdvTally = { disadv: number; normal: number; adv: number };
-export type Tally = AddTally | AdvTally;
+// History shapes
+export type RowDamagePiece = {
+  type: string | null; // totals bucket (show "Undefined" when null)
+  label: string; // display name for this piece (e.g., "slashing" or modifier.source)
+  total: number;
+  detail: string; // tooltip-ish text: "Rolled 2d6 → 3, 3 (+6)"
+};
 
-export function isAddTally(t: Tally): t is AddTally {
-  return (t as AddTally).add !== undefined;
-}
-export function isAdvTally(t: Tally): t is AdvTally {
-  return (
-    (t as AdvTally).disadv !== undefined &&
-    (t as AdvTally).normal !== undefined &&
-    (t as AdvTally).adv !== undefined
-  );
-}
+export type ActionRow = {
+  kind: "action";
+  actionId: string;
+  name: string;
+  mode: RollMode; // normal | adv | disadv
+  toHitTotal: number;
+  toHitDetail: string; // e.g., "11 or 17 (+10)"
+  crit: boolean;
+  damage: RowDamagePiece[];
+  selected: boolean;
+};
 
-export function emptyTally(followsAdvantageRules: boolean): Tally {
-  return followsAdvantageRules ? { disadv: 0, normal: 0, adv: 0 } : { add: 0 };
-}
+export type PerTurnRow = {
+  kind: "perTurn";
+  modifierId: string;
+  name: string;
+  damage: RowDamagePiece[];
+  selected: boolean;
+};
+
+export type HistoryGroup = {
+  id: string;
+  timestamp: number; // epoch ms
+  tz: string; // IANA tz id when available
+  rows: (ActionRow | PerTurnRow)[];
+  totals: { sum: number; byType: { type: string; amount: number }[] };
+};
