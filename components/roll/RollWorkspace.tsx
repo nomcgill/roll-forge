@@ -9,13 +9,16 @@ import type {
     CharacterPreferences,
     RollMode,
     Tally,
-    HistoryGroup,
 } from "@/components/roll/types";
 
 import ReadyPane from "./ReadyPane";
 import HistoryPane from "./HistoryPane";
 import ActionLikeForm from "./ActionLikeForm";
-import { executeActionGroup, recomputeTotals } from "@/lib/roll/engine";
+import {
+    executeActionGroup,
+    recomputeTotals,
+    type HistoryGroup,
+} from "@/lib/roll/engine";
 
 type CharacterLike = {
     id: string;
@@ -41,18 +44,17 @@ type Props =
         character?: never;
     };
 
-// guard
 function hasCharacter(
     p: Props
 ): p is { character: CharacterLike; initialActions?: ActionRecord[]; initialModifiers?: ModifierRecord[] } {
     return (p as any).character != null;
 }
 
-// defaults so children never see undefined
+// normalize so children never see undefined
 function normalizePreferences(p?: CharacterPreferences): CharacterPreferences {
     return {
-        advRules: p?.advRules !== false,            // default true
-        critRules: p?.critRules ?? "5e-double",     // default 5e crits
+        advRules: p?.advRules !== false,
+        critRules: p?.critRules ?? "5e-double",
         critThreshold: typeof p?.critThreshold === "number" ? p!.critThreshold : 20,
         uniqueDamageTypes: p?.uniqueDamageTypes ?? [],
     };
@@ -69,13 +71,12 @@ export default function RollWorkspace(props: Props) {
     const sp = useSearchParams();
     const mode = getParamMode(sp);
 
-    // normalize inputs
+    // normalized inputs
     const characterId: string = hasCharacter(props) ? props.character.id : props.characterId;
     const prefs = normalizePreferences(
         hasCharacter(props) ? props.character.preferences : props.preferences
     );
 
-    // source data (not mutated here)
     const actions: ActionRecord[] = hasCharacter(props)
         ? props.character.actions ?? props.initialActions ?? []
         : props.initialActions ?? [];
@@ -97,7 +98,7 @@ export default function RollWorkspace(props: Props) {
     const [perActionSelected, setPerActionSelected] = useState<Set<string>>(new Set());
     const [perTurnSelected, setPerTurnSelected] = useState<Set<string>>(new Set());
 
-    // history (client)
+    // History uses the ENGINE's HistoryGroup type
     const [history, setHistory] = useState<HistoryGroup[]>([]);
 
     // url helper
@@ -148,7 +149,7 @@ export default function RollWorkspace(props: Props) {
         const group = executeActionGroup({
             actions,
             modifiers,
-            preferences: prefs, // normalized
+            preferences: prefs,
             selection: {
                 actionTallies: tallies,
                 perActionModifierIds: Array.from(perActionSelected),
@@ -168,20 +169,18 @@ export default function RollWorkspace(props: Props) {
         }
     }
 
-    function onToggleRowSelected(groupId: string, rowIndex: number) {
+    // HistoryPane (optional) callback: keep totals in sync when user toggles a row
+    const onToggleRow = (groupId: string, rowId: string, next: boolean) => {
         setHistory((groups) =>
             groups.map((g) => {
                 if (g.id !== groupId) return g;
-                const rows = g.rows.slice();
-                rows[rowIndex] = { ...rows[rowIndex], selected: !rows[rowIndex].selected } as any;
+                const rows = g.rows.map((r) =>
+                    r.id === rowId ? { ...r, selected: next } : r
+                );
                 return { ...g, rows, totals: recomputeTotals(rows) };
             })
         );
-    }
-
-    function onClearHistory() {
-        setHistory([]);
-    }
+    };
 
     const onCancelForm = () => pushMode("ready");
     const onSavedForm = () => pushMode("ready");
@@ -193,7 +192,6 @@ export default function RollWorkspace(props: Props) {
                 <header className="mb-2 flex items-center justify-between gap-3">
                     <h2 className="text-xl font-bold">Ready an Action</h2>
 
-                    {/* Quick-create buttons (not tabs; only visible in ready mode) */}
                     {mode === "ready" && (
                         <div className="flex items-center gap-2">
                             <button
@@ -243,7 +241,6 @@ export default function RollWorkspace(props: Props) {
                             preferences={prefs}
                         />
 
-                        {/* sticky roll button */}
                         <div className="sticky bottom-2 pt-3">
                             <button
                                 type="button"
@@ -264,14 +261,20 @@ export default function RollWorkspace(props: Props) {
 
             {/* RIGHT / HISTORY */}
             <div>
-                <header className="mb-2">
+                <header className="mb-2 flex items-center justify-between">
                     <h2 className="text-xl font-bold lg:block hidden">Roll History</h2>
+                    {history.length > 0 && (
+                        <button
+                            type="button"
+                            onClick={() => setHistory([])}
+                            className="hidden lg:inline-block text-xs rounded border px-2 py-1 border-slate-600 hover:bg-slate-800"
+                        >
+                            Clear
+                        </button>
+                    )}
                 </header>
-                <HistoryPane
-                    groups={history}
-                    onToggleRowSelected={onToggleRowSelected}
-                    onClearHistory={onClearHistory}
-                />
+
+                <HistoryPane history={history} onToggleRow={onToggleRow} />
             </div>
         </div>
     );

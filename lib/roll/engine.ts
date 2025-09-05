@@ -3,374 +3,449 @@ import type {
   ActionRecord,
   ModifierRecord,
   CharacterPreferences,
-  DiceEntry,
-  DiceEntryToHit,
-  RowDamagePiece,
-  ActionRow,
-  PerTurnRow,
-  HistoryGroup,
+  RollMode,
+  Tally,
   DieSize,
   Signed,
-  RollMode,
-  ActionDamageLine,
-  ModifierDamageLine,
-  CritRules,
-  Tally,
 } from "@/components/roll/types";
 
-type Rng = () => number;
+/* ────────────────────────────────────────────────────────────
+ * History output consumed by HistoryPane
+ * ──────────────────────────────────────────────────────────── */
+export type HistoryDamageDetail = {
+  amount: number;
+  type: string | null; // null → “Undefined”
+  typeLabel: string; // precomputed label
+  source?: string; // user text, shown in details; ignored in totals
+  parts: string[]; // granular explanation (dice/static)
+};
 
+export type HistoryRow = {
+  id: string;
+  kind: "action" | "perTurnModifier";
+  name: string;
+  mode?: RollMode; // only for action rows
+  successTotal?: number | null; // null/undefined for perTurnModifier
+  successDetail?: string; // compact math string
+  crit?: boolean;
+  labels: string[]; // “Advantage”, “Crit”, etc. plus to-hit modifier summary
+  damage: HistoryDamageDetail[]; // order preserved
+  selected: boolean; // rows start selected
+};
+
+export type HistoryGroup = {
+  id: string;
+  timestampIso: string;
+  timestampLabel: string; // "1:12 PM"
+  rows: HistoryRow[];
+  totals: {
+    grand: number;
+    byType: { type: string | null; label: string; total: number }[];
+  };
+};
+
+/* ────────────────────────────────────────────────────────────
+ * Internal shapes mirroring factorsJson
+ * ──────────────────────────────────────────────────────────── */
+type DieSpec = {
+  count: number;
+  size: DieSize;
+  signDice: Signed;
+  /** to-hit only */
+  canCrit?: boolean;
+};
+
+type ToHitSpec = {
+  static?: number;
+  signStatic?: Signed;
+  dice?: DieSpec[];
+};
+
+type DamageLineSpec = {
+  type: string | null; // null → “inherit first action damage type” (for per-action modifiers)
+  source?: string; // user note (only for per-action)
+  static?: number;
+  signStatic?: Signed;
+  dice?: DieSpec[];
+};
+
+type ConditionsSpec = {
+  wielding?: "weapon" | "unarmed" | false;
+  distance?: "melee" | "ranged" | false;
+  spell?: boolean;
+};
+
+type ActionFactors = {
+  toHit: ToHitSpec;
+  damage: DamageLineSpec[];
+  conditions?: ConditionsSpec;
+};
+
+type ActionModifierFactors = {
+  eachAttack: boolean; // true → per-action; false → per-turn
+  attackImpact?: ToHitSpec; // affects successTotal only; never crits
+  damage?: DamageLineSpec[]; // extra damage lines
+  conditions?: ConditionsSpec;
+};
+
+/* ────────────────────────────────────────────────────────────
+ * Utils
+ * ──────────────────────────────────────────────────────────── */
+const labelForType = (t: string | null) => (t == null ? "Undefined" : t);
+
+const fmtTime = (d: Date) =>
+  d.toLocaleTimeString(undefined, { hour: "numeric", minute: "2-digit" });
+
+const rollOne = (size: number, rng: () => number) =>
+  1 + Math.floor(rng() * size);
+
+/** Roll to-hit dice with per-die pairing for adv/disadv (when advRules on). */
+function rollToHitDice(
+  dice: DieSpec[] | undefined,
+  mode: RollMode,
+  advRules: boolean,
+  rng: () => number
+) {
+  const picked: number[] = [];
+  const pairsShown: { a: number; b: number }[] = []; // for pretty single-d20 display
+  const perDieChosenSigned: number[] = [];
+
+  (dice ?? []).forEach((spec) => {
+    for (let i = 0; i < spec.count; i++) {
+      if (advRules && (mode === "adv" || mode === "disadv")) {
+        const a = rollOne(spec.size, rng);
+        const b = rollOne(spec.size, rng);
+        const v = mode === "adv" ? Math.max(a, b) : Math.min(a, b);
+        picked.push(v);
+        perDieChosenSigned.push(v * spec.signDice);
+        pairsShown.push({ a, b });
+      } else {
+        const v = rollOne(spec.size, rng);
+        picked.push(v);
+        perDieChosenSigned.push(v * spec.signDice);
+      }
+    }
+  });
+
+  return {
+    sum: perDieChosenSigned.reduce((A, B) => A + B, 0),
+    picked,
+    pairsShown,
+  };
+}
+
+/** Attack impact: rolled once per action row and added to the chosen result (cannot crit). */
+function sumAttackImpact(impact: ToHitSpec | undefined, rng: () => number) {
+  if (!impact) return { total: 0, parts: [] as string[] };
+
+  const s = (impact.static ?? 0) * (impact.signStatic ?? 1);
+  let diceTotal = 0;
+  const parts: string[] = [];
+
+  (impact.dice ?? []).forEach((d) => {
+    const rolls: number[] = [];
+    for (let i = 0; i < d.count; i++) {
+      const v = rollOne(d.size, rng);
+      rolls.push(v);
+      diceTotal += v * d.signDice;
+    }
+    parts.push(
+      `Rolled ${d.count}d${d.size} → ${rolls.join(", ")}${
+        d.signDice === -1 ? " (−)" : ""
+      }`
+    );
+  });
+
+  const total = s + diceTotal;
+  const pieces = [
+    ...(s !== 0 ? [`${s > 0 ? "+" : ""}${s} static`] : []),
+    ...parts,
+  ];
+  return { total, parts: pieces };
+}
+
+/** Damage line roll; on crit (5e), double rolled dice only (not static). */
+function rollDamageLine(
+  line: DamageLineSpec,
+  crit: boolean,
+  rng: () => number
+): HistoryDamageDetail {
+  const s = (line.static ?? 0) * (line.signStatic ?? 1);
+  let diceTotal = 0;
+  const parts: string[] = [];
+
+  (line.dice ?? []).forEach((d) => {
+    const rollSet = () => {
+      const rolls: number[] = [];
+      let subtotal = 0;
+      for (let i = 0; i < d.count; i++) {
+        const v = rollOne(d.size, rng);
+        rolls.push(v);
+        subtotal += v * d.signDice;
+      }
+      parts.push(
+        `Rolled ${d.count}d${d.size} → ${rolls.join(", ")}${
+          d.signDice === -1 ? " (−)" : ""
+        }`
+      );
+      return subtotal;
+    };
+    diceTotal += rollSet();
+    if (crit) diceTotal += rollSet();
+  });
+
+  const amount = s + diceTotal;
+  return {
+    amount,
+    type: line.type ?? null,
+    typeLabel: labelForType(line.type ?? null),
+    source: line.source,
+    parts: parts.length ? parts : [s !== 0 ? "Flat damage." : "—"],
+  };
+}
+
+function computeTotals(rows: HistoryRow[]) {
+  const byTypeMap = new Map<string | null, number>();
+  let grand = 0;
+
+  rows.forEach((r) => {
+    if (!r.selected) return;
+    r.damage.forEach((d) => {
+      grand += d.amount;
+      byTypeMap.set(d.type, (byTypeMap.get(d.type) ?? 0) + d.amount);
+    });
+  });
+
+  const byType = Array.from(byTypeMap.entries()).map(([type, total]) => ({
+    type,
+    label: labelForType(type),
+    total,
+  }));
+
+  return { grand, byType };
+}
+
+/** expose a helper the UI can call after row (de)selection */
+export function recomputeTotals(rows: HistoryRow[]) {
+  return computeTotals(rows);
+}
+
+/* ────────────────────────────────────────────────────────────
+ * Public: execute a group
+ * ──────────────────────────────────────────────────────────── */
 export function executeActionGroup(args: {
   actions: ActionRecord[];
   modifiers: ModifierRecord[];
+  preferences: CharacterPreferences;
   selection: {
     actionTallies: Record<string, Tally>;
     perActionModifierIds: string[];
     perTurnModifierIds: string[];
   };
-  preferences: CharacterPreferences;
-  rng?: Rng;
+  rng?: () => number; // optional for testing
 }): HistoryGroup {
-  const { actions, modifiers, selection, preferences } = args;
-  const rng: Rng = args.rng ?? Math.random;
+  const {
+    actions,
+    modifiers,
+    preferences,
+    selection: { actionTallies, perActionModifierIds, perTurnModifierIds },
+  } = args;
+  const rng = args.rng ?? Math.random;
 
-  const now = Date.now();
-  const tz = Intl.DateTimeFormat().resolvedOptions().timeZone || "UTC";
+  const advRules = preferences.advRules !== false;
+  const critActive = preferences.critRules;
+  const critThreshold =
+    typeof preferences.critThreshold === "number"
+      ? preferences.critThreshold
+      : 20;
 
-  const actById = new Map(actions.map((a) => [a.id, a]));
-  const modById = new Map(modifiers.map((m) => [m.id, m]));
+  const now = new Date();
+  const rows: HistoryRow[] = [];
+  let rowCounter = 0;
 
-  const perActionMods = selection.perActionModifierIds
-    .map((id) => modById.get(id))
-    .filter(Boolean) as ModifierRecord[];
-  const perTurnMods = selection.perTurnModifierIds
-    .map((id) => modById.get(id))
-    .filter(Boolean) as ModifierRecord[];
+  const perTurnMods = modifiers.filter(
+    (m) => !m.factorsJson.eachAttack && perTurnModifierIds.includes(m.id)
+  );
+  const perActionMods = modifiers.filter(
+    (m) => m.factorsJson.eachAttack && perActionModifierIds.includes(m.id)
+  );
 
-  const rows: (ActionRow | PerTurnRow)[] = [];
+  // Aggregate per-turn attackImpact once; added to every action row
+  const perTurnImpactAgg = sumAttackImpact(
+    mergeToHitSpecs(perTurnMods.map((m) => m.factorsJson.attackImpact)),
+    rng
+  );
 
-  // build action rows
-  Object.entries(selection.actionTallies).forEach(([actionId, tally]) => {
-    const act = actById.get(actionId);
-    if (!act) return;
+  // Build action rows from tallies
+  actions.forEach((a) => {
+    const factors = a.factorsJson as ActionFactors;
+    const tally = actionTallies[a.id] ?? { adv: 0, normal: 0, disadv: 0 };
 
-    const firstActionType = act.factorsJson.damage?.[0]?.type ?? null;
+    (["adv", "normal", "disadv"] as const).forEach((mode) => {
+      let count = tally[mode];
+      if (!advRules && (mode === "adv" || mode === "disadv")) count = 0;
 
-    const mkRow = (mode: RollMode) => {
-      const { toHitTotal, toHitDetail, crit } = computeToHit({
-        action: act,
-        perActionMods,
-        perTurnMods,
-        mode,
-        preferences,
-        rng,
-      });
+      for (let i = 0; i < count; i++) {
+        const toHit = factors.toHit ?? { static: 0, signStatic: 1, dice: [] };
+        const toHitRoll = rollToHitDice(toHit.dice, mode, advRules, rng);
 
-      const pieces: RowDamagePiece[] = [];
-
-      // base action damage
-      for (const d of act.factorsJson.damage ?? []) {
-        pieces.push(
-          computeDamagePiece({
-            line: d,
-            inheritedType: null,
-            crit,
-            critRules: preferences.critRules ?? "5e-double",
-            rng,
-          })
+        const baseStatic = (toHit.static ?? 0) * (toHit.signStatic ?? 1);
+        const perActionImpact = sumAttackImpact(
+          mergeToHitSpecs(perActionMods.map((m) => m.factorsJson.attackImpact)),
+          rng
         );
-      }
+        const impactTotal = perActionImpact.total + perTurnImpactAgg.total;
 
-      // per-action modifiers (inherit type when null)
-      for (const m of perActionMods) {
-        if (!m.factorsJson.eachAttack) continue;
-        for (const d of m.factorsJson.damage ?? []) {
-          const inheritedType = d.type === null ? firstActionType : null;
-          const displayLabel =
-            d.type === null
-              ? d.source?.trim() || "base"
-              : d.type || "Undefined";
-          const piece = computeDamagePiece({
-            line: d,
-            inheritedType,
-            crit,
-            critRules: preferences.critRules ?? "5e-double",
-            rng,
-          });
-          pieces.push({ ...piece, label: displayLabel });
+        const successTotal = toHitRoll.sum + baseStatic + impactTotal;
+
+        // labels (Adv/Disadv + to-hit modifier summary if any)
+        const labels: string[] = [];
+        if (mode === "adv") labels.push("Advantage");
+        if (mode === "disadv") labels.push("Disadvantage");
+        if (impactTotal !== 0) {
+          labels.push(
+            `${impactTotal > 0 ? "+" : ""}${impactTotal} to hit (modifiers)`
+          );
         }
+
+        // success detail: show pair nicely when exactly one d20 canCrit
+        const primaryD20 =
+          (toHit.dice ?? [])
+            .filter((d) => d.size === 20 && (d.canCrit ?? true))
+            .reduce((acc, d) => acc + d.count, 0) === 1;
+
+        let successDetail = "";
+        if (
+          advRules &&
+          (mode === "adv" || mode === "disadv") &&
+          primaryD20 &&
+          toHitRoll.pairsShown.length >= 1
+        ) {
+          const { a: A, b: B } = toHitRoll.pairsShown[0];
+          successDetail = `${A} or ${B} (${fmtSigned(
+            baseStatic + impactTotal
+          )})`;
+        } else {
+          const natural = toHitRoll.picked.reduce((sum, v, idx) => {
+            const sd = (toHit.dice ?? [])[idx]?.signDice ?? 1;
+            return sum + v * sd;
+          }, 0);
+          successDetail = `${natural} (${fmtSigned(baseStatic + impactTotal)})`;
+        }
+
+        // crit detection: only if active and there exists a d20 with canCrit true
+        let crit = false;
+        if (critActive) {
+          const eligible = (toHit.dice ?? []).some(
+            (d) => d.size === 20 && (d.canCrit ?? true)
+          );
+          if (eligible) {
+            // compare the picked natural per die
+            let ptr = 0;
+            (toHit.dice ?? []).forEach((d) => {
+              for (let j = 0; j < d.count; j++) {
+                const val = toHitRoll.picked[ptr++];
+                if (
+                  d.size === 20 &&
+                  (d.canCrit ?? true) &&
+                  val >= critThreshold
+                ) {
+                  crit = true;
+                }
+              }
+            });
+            if (crit) labels.push("Crit");
+          }
+        }
+
+        // damage: base action then per-action modifiers
+        const damageLines: HistoryDamageDetail[] = [];
+        const firstActionType: string | null =
+          factors.damage?.[0]?.type ?? null;
+
+        (factors.damage ?? []).forEach((line) => {
+          damageLines.push(rollDamageLine(line, crit, rng));
+        });
+
+        perActionMods.forEach((m) => {
+          (m.factorsJson.damage ?? []).forEach((line) => {
+            const typeToUse =
+              line.type === null ? firstActionType : line.type ?? null;
+            const rolled = rollDamageLine(
+              { ...line, type: typeToUse },
+              crit,
+              rng
+            );
+            if (line.type === null && line.source) {
+              rolled.source = line.source; // show user note
+            }
+            damageLines.push(rolled);
+          });
+        });
+
+        rows.push({
+          id: `row-${++rowCounter}`,
+          kind: "action",
+          name: a.name,
+          mode,
+          successTotal,
+          successDetail,
+          crit,
+          labels,
+          damage: damageLines,
+          selected: true,
+        });
       }
-
-      const row: ActionRow = {
-        kind: "action",
-        actionId: act.id,
-        name: act.name,
-        mode,
-        toHitTotal,
-        toHitDetail,
-        crit: preferences.critRules ? crit : false,
-        damage: pieces,
-        selected: true,
-      };
-      return row;
-    };
-
-    repeat(tally.normal, () => rows.push(mkRow("normal")!));
-    repeat(tally.adv, () => rows.push(mkRow("adv")!));
-    repeat(tally.disadv, () => rows.push(mkRow("disadv")!));
+    });
   });
 
-  // per-turn rows (no to-hit)
-  for (const m of perTurnMods) {
-    if (m.factorsJson.eachAttack) continue;
-    const pieces: RowDamagePiece[] = [];
-    for (const d of m.factorsJson.damage ?? []) {
-      const label =
-        d.type === null ? d.source?.trim() || "base" : d.type || "Undefined";
-      pieces.push(
-        computeDamagePiece({
-          line: d,
-          inheritedType: null,
-          crit: false,
-          critRules: preferences.critRules ?? "5e-double",
-          rng,
-          labelOverride: label,
-        })
-      );
-    }
+  // one per-turn row (if any selected)
+  if (perTurnMods.length) {
+    const modDamage: HistoryDamageDetail[] = [];
+    perTurnMods.forEach((m) => {
+      (m.factorsJson.damage ?? []).forEach((line) => {
+        modDamage.push(
+          rollDamageLine(line, /*crit does not affect per-turn row*/ false, rng)
+        );
+      });
+    });
+
     rows.push({
-      kind: "perTurn",
-      modifierId: m.id,
-      name: m.name,
-      damage: pieces,
+      id: `row-${++rowCounter}`,
+      kind: "perTurnModifier",
+      name: "+ Modifiers (Per Turn)",
+      successTotal: null,
+      successDetail: undefined,
+      crit: false,
+      labels: [],
+      damage: modDamage,
       selected: true,
     });
   }
 
-  // initial totals (selected by default)
-  const totals = totalsFromRows(rows);
+  const totals = computeTotals(rows);
 
   return {
-    id: `grp_${now}_${Math.floor(rng() * 1e6)}`,
-    timestamp: now,
-    tz,
+    id: `group-${Date.now()}`,
+    timestampIso: now.toISOString(),
+    timestampLabel: fmtTime(now),
     rows,
     totals,
   };
 }
 
-/* ----------------- helpers ----------------- */
-
-function totalsFromRows(rows: (ActionRow | PerTurnRow)[]) {
-  const map = new Map<string, number>();
-  for (const r of rows) {
-    if (!r.selected) continue;
-    for (const p of r.damage) {
-      const key = p.type ?? "Undefined";
-      map.set(key, (map.get(key) ?? 0) + p.total);
-    }
-  }
-  const byType = Array.from(map.entries()).map(([type, amount]) => ({
-    type,
-    amount,
-  }));
-  const sum = byType.reduce((a, b) => a + b.amount, 0);
-  return { sum, byType };
-}
-
-function computeToHit(args: {
-  action: ActionRecord;
-  perActionMods: ModifierRecord[];
-  perTurnMods: ModifierRecord[];
-  mode: RollMode;
-  preferences: CharacterPreferences;
-  rng: () => number;
-}): { toHitTotal: number; toHitDetail: string; crit: boolean } {
-  const { action, perActionMods, perTurnMods, mode, preferences, rng } = args;
-
-  const advEnabled = preferences.advRules !== false;
-
-  const base = action.factorsJson.toHit ?? {
-    static: 0,
-    signStatic: 1 as Signed,
-    dice: [],
-  };
-  const baseStatic = (base.static ?? 0) * (base.signStatic ?? 1);
-
-  const impacts = [...perActionMods, ...perTurnMods].map(
-    (m) =>
-      m.factorsJson.attackImpact ?? {
-        static: 0,
-        signStatic: 1 as Signed,
-        dice: [],
-      }
-  );
-
-  const { chosenSum, detail, crit } = sumToHitWithAdv({
-    toHitDice: base.dice ?? [],
-    impactsDice: impacts.flatMap((i) => i.dice ?? []),
-    canCrit: preferences.critRules !== null,
-    critThreshold: preferences.critThreshold ?? 20,
-    mode: advEnabled ? mode : "normal",
-    rng,
+/** merge many ToHitSpec fragments (sum statics, concat dice keeping signDice) */
+function mergeToHitSpecs(specs: Array<ToHitSpec | undefined>) {
+  const merged: ToHitSpec = { static: 0, signStatic: 1, dice: [] };
+  specs.forEach((s) => {
+    if (!s) return;
+    merged.static =
+      (merged.static ?? 0) + (s.static ?? 0) * (s.signStatic ?? 1);
+    (s.dice ?? []).forEach((d) => (merged.dice as DieSpec[]).push({ ...d }));
   });
-
-  const impactsStatic = impacts.reduce(
-    (acc, i) => acc + (i.static ?? 0) * (i.signStatic ?? 1),
-    0
-  );
-  const total = baseStatic + impactsStatic + chosenSum;
-  const staticPart = baseStatic + impactsStatic;
-  const staticLabel = staticPart !== 0 ? ` (+${staticPart})` : "";
-
-  return {
-    toHitTotal: total,
-    toHitDetail: `${detail}${staticLabel}`,
-    crit: preferences.critRules ? crit : false,
-  };
+  return merged;
 }
 
-function computeDamagePiece(args: {
-  line: ActionDamageLine | ModifierDamageLine;
-  inheritedType: string | null;
-  crit: boolean;
-  critRules: CritRules;
-  rng: () => number;
-  labelOverride?: string;
-}): RowDamagePiece {
-  const { line, inheritedType, crit, critRules, rng, labelOverride } = args;
-  const signStatic = line.signStatic ?? 1;
-  const staticVal = (line.static ?? 0) * signStatic;
-
-  const dice = line.dice ?? [];
-  const first = rollDiceList(dice, rng);
-  let diceTotal = first.total;
-
-  let critText = "";
-  if (crit && critRules === "5e-double" && dice.length > 0) {
-    const extra = rollDiceList(dice, rng);
-    diceTotal += extra.total;
-    critText = ` + Crit: ${extra.desc}`;
-  }
-
-  const total = staticVal + diceTotal;
-
-  const typeForTotals =
-    line.type === null ? inheritedType ?? null : line.type ?? null;
-  const label =
-    labelOverride ??
-    (line.type === null
-      ? inheritedType ?? "Undefined"
-      : line.type || "Undefined");
-
-  const descStatic = line.static
-    ? ` (+${(line.static ?? 0) * (line.signStatic ?? 1)})`
-    : "";
-  const detail = `${first.desc}${descStatic}${critText}`.trim();
-
-  return { type: typeForTotals, label, total, detail };
-}
-
-function rollOnce(size: DieSize, rng: () => number): number {
-  return 1 + Math.floor(rng() * size);
-}
-
-function rollDice(count: number, size: DieSize, rng: () => number): number[] {
-  const arr: number[] = [];
-  for (let i = 0; i < count; i++) arr.push(rollOnce(size, rng));
-  return arr;
-}
-
-function rollDiceList(
-  list: DiceEntry[],
-  rng: () => number
-): { total: number; parts: number[]; desc: string } {
-  let total = 0;
-  const parts: number[] = [];
-  const chunks: string[] = [];
-
-  for (const d of list) {
-    const sign = d.signDice ?? 1;
-    const rolls = rollDice(d.count, d.size, rng);
-    const sum = rolls.reduce((a, b) => a + b, 0) * sign;
-    total += sum;
-    parts.push(sum);
-    chunks.push(`Rolled ${d.count}d${d.size} → ${rolls.join(", ")}`);
-  }
-
-  const desc = chunks.length ? chunks.join("; ") : "Flat damage.";
-  return { total, parts, desc };
-}
-
-function sumToHitWithAdv(args: {
-  toHitDice: DiceEntryToHit[];
-  impactsDice: DiceEntry[];
-  canCrit: boolean;
-  critThreshold: number;
-  mode: RollMode;
-  rng: () => number;
-}): { chosenSum: number; detail: string; crit: boolean } {
-  const { toHitDice, impactsDice, canCrit, critThreshold, mode, rng } = args;
-
-  let chosenSum = 0;
-  let crit = false;
-  const detailBits: string[] = [];
-
-  const choose = (
-    size: DieSize,
-    count: number,
-    sign: Signed,
-    allowCrit: boolean
-  ) => {
-    const picks: number[] = [];
-    for (let i = 0; i < count; i++) {
-      if (mode === "normal") {
-        const r = rollOnce(size, rng);
-        picks.push(r);
-        if (allowCrit && size === 20 && r >= critThreshold) crit = true;
-      } else {
-        const a = rollOnce(size, rng);
-        const b = rollOnce(size, rng);
-        const better = Math.max(a, b);
-        const worse = Math.min(a, b);
-        const chosen = mode === "adv" ? better : worse;
-        detailBits.push(`${worse} or ${better}`);
-        picks.push(chosen);
-        if (allowCrit && size === 20 && chosen >= critThreshold) crit = true;
-      }
-    }
-    return picks.reduce((s, v) => s + v, 0) * sign;
-  };
-
-  // base to-hit dice
-  for (const d of toHitDice ?? []) {
-    const sign = d.signDice ?? 1;
-    const allowCrit = !!d.canCrit && canCrit && d.size === 20;
-    chosenSum += choose(d.size, d.count, sign, allowCrit);
-    if (mode === "normal") detailBits.push(""); // keep index alignment; not shown
-  }
-
-  // attackImpact dice (never crit)
-  for (const d of impactsDice ?? []) {
-    const sign = d.signDice ?? 1;
-    chosenSum += choose(d.size, d.count, sign, false);
-  }
-
-  let detail = "0";
-  if (mode === "normal") detail = String(chosenSum);
-  else {
-    const pairs = detailBits.filter(Boolean);
-    detail = pairs.length ? pairs[pairs.length - 1] : String(chosenSum);
-  }
-
-  return { chosenSum, detail, crit };
-}
-
-function repeat(n: number, fn: () => void) {
-  for (let i = 0; i < n; i++) fn();
-}
-
-// re-export for consumers that want to recompute totals after selection toggles
-export function recomputeTotals(rows: (ActionRow | PerTurnRow)[]) {
-  return totalsFromRows(rows);
+function fmtSigned(n: number) {
+  return `${n >= 0 ? "+" : ""}${n}`;
 }
