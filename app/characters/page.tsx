@@ -8,6 +8,7 @@ import { prisma } from "@/lib/prisma";
 import { getUserId } from "@/lib/session";
 import Link from "next/link";
 import CharacterList from "@/components/CharacterList";
+import CreateDemoButton from "@/components/dev/CreateDemoButton";
 import type { ReactElement } from "react";
 import type { Character as CharacterListItem } from "@/components/CharacterList/CharacterList";
 
@@ -42,6 +43,7 @@ export default async function CharactersPage(): Promise<ReactElement> {
     return (
         <main className="p-4 max-w-xl mx-auto space-y-4">
             <h1 className="text-2xl font-bold">Your Characters</h1>
+            {process.env.NODE_ENV !== "production" && <CreateDemoButton />}
             {characters.length === 0 ? <p>No characters yet!</p> : <CharacterList characters={listItems} />}
         </main>
     );
