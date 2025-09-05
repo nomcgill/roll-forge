@@ -34,7 +34,7 @@ export async function POST(
       characterId: params.id,
       name: parsed.data.name,
       favorite: parsed.data.favorite ?? false,
-      rollDetails: parsed.data.rollDetails,
+      factorsJson: parsed.data.factorsJson,
     },
   });
 

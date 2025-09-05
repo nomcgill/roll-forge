@@ -1,8 +1,9 @@
 // components/CharacterList/CharacterList.tsx
 'use client';
 
+import Link from 'next/link';
 import { useRouter } from 'next/navigation';
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 
 export type Character = {
     id: string;
@@ -18,6 +19,11 @@ export default function CharacterList({ characters: initial }: Props) {
     const router = useRouter();
     const [characters, setCharacters] = useState<Character[]>(initial);
     const [deletingId, setDeletingId] = useState<string | null>(null);
+
+    // Sync local state if the server-provided list changes
+    useEffect(() => {
+        setCharacters(initial);
+    }, [initial]);
 
     async function handleDelete(id: string, name: string) {
         if (!confirm(`Delete "${name}"? This cannot be undone.`)) return;
@@ -49,7 +55,11 @@ export default function CharacterList({ characters: initial }: Props) {
                     key={c.id}
                     className="flex items-center justify-between rounded-lg border p-3"
                 >
-                    <div className="flex items-center gap-3">
+                    <Link
+                        href={`/characters/${c.id}`}
+                        className="flex items-center gap-3 hover:underline"
+                        aria-label={`Open ${c.name}`}
+                    >
                         {c.avatarUrl ? (
                             <img
                                 src={c.avatarUrl}
@@ -58,7 +68,7 @@ export default function CharacterList({ characters: initial }: Props) {
                             />
                         ) : null}
                         <span>{c.name}</span>
-                    </div>
+                    </Link>
 
                     <button
                         onClick={() => handleDelete(c.id, c.name)}
