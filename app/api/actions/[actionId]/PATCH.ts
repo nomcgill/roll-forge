@@ -35,7 +35,7 @@ export async function PATCH(
     data: {
       name: parsed.data.name,
       favorite: parsed.data.favorite ?? false,
-      rollDetails: parsed.data.rollDetails,
+      factorsJson: parsed.data.factorsJson,
     },
   });
   return NextResponse.json({ action: updated });
