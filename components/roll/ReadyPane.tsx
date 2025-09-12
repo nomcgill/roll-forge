@@ -1,3 +1,4 @@
+// components/roll/ReadyPane.tsx
 "use client";
 
 import React from "react";
@@ -7,19 +8,18 @@ import type {
     CharacterPreferences,
     RollMode,
     Tally,
-    DiceEntryToHit,
-    DiceEntry,
 } from "@/components/roll/types";
+import ActionPreviewCard from "@/components/roll/ActionPreviewCard";
 
 type Props = {
     actions: ActionRecord[];
-    modifiers: ModifierRecord[]; // we split into per-action/per-turn here
+    modifiers: ModifierRecord[]; // split into per-action/per-turn here
     tallies: Record<string, Tally>;
     onTally: (actionId: string, mode: RollMode, delta: 1 | -1) => void;
     selectedPerActionModifierIds: Set<string>;
     selectedPerTurnModifierIds: Set<string>;
     onToggleModifier: (modifierId: string, isPerAction: boolean) => void;
-    preferences?: CharacterPreferences; // ✅ tolerate undefined, we’ll default
+    preferences?: CharacterPreferences;
 };
 
 const DEFAULT_PREFS: CharacterPreferences = {
@@ -40,8 +40,8 @@ export default function ReadyPane({
     preferences,
 }: Props) {
     const prefs = preferences ?? DEFAULT_PREFS;
-    const advEnabled = prefs.advRules !== false;
 
+    // Derive modifier buckets
     const perActionMods = React.useMemo(
         () => modifiers.filter((m) => m.factorsJson.eachAttack),
         [modifiers]
@@ -51,28 +51,101 @@ export default function ReadyPane({
         [modifiers]
     );
 
+    // Local selection for "active" actions (drives Section 3 previews)
+    const [selectedActionIds, setSelectedActionIds] = React.useState<Set<string>>(new Set());
+
+    // Initialize selection:
+    // 1) any action with non-zero tallies
+    // 2) else favorites
+    // 3) else if exactly one action exists, select it
+    React.useEffect(() => {
+        const preselected = new Set<string>();
+
+        // from tallies
+        actions.forEach((a) => {
+            const t = tallies[a.id];
+            if (t && ((t.normal ?? 0) + (t.adv ?? 0) + (t.disadv ?? 0)) > 0) {
+                preselected.add(a.id);
+            }
+        });
+
+        // favorites if nothing tallied
+        if (preselected.size === 0) {
+            actions.forEach((a) => {
+                if (a.favorite) preselected.add(a.id);
+            });
+        }
+
+        // single action convenience
+        if (preselected.size === 0 && actions.length === 1) {
+            preselected.add(actions[0].id);
+        }
+
+        setSelectedActionIds(preselected);
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [actions]);
+
+    const toggleAction = (id: string) => {
+        setSelectedActionIds((prev) => {
+            const next = new Set(prev);
+            next.has(id) ? next.delete(id) : next.add(id);
+            return next;
+        });
+    };
+
+    const activeActions = React.useMemo(
+        () => actions.filter((a) => selectedActionIds.has(a.id)),
+        [actions, selectedActionIds]
+    );
+
+    // Selected modifier arrays for previews
+    const activePerActionModifiers = React.useMemo(
+        () => perActionMods.filter((m) => selectedPerActionModifierIds.has(m.id)),
+        [perActionMods, selectedPerActionModifierIds]
+    );
+    const activePerTurnModifiers = React.useMemo(
+        () => perTurnMods.filter((m) => selectedPerTurnModifierIds.has(m.id)),
+        [perTurnMods, selectedPerTurnModifierIds]
+    );
+
+    // Map ActionPreviewCard's onInc/onDec to onTally
+    const inc = (id: string, kind: "normal" | "adv" | "disadv") =>
+        onTally(id, kind as RollMode, 1);
+    const dec = (id: string, kind: "normal" | "adv" | "disadv") =>
+        onTally(id, kind as RollMode, -1);
+
     return (
-        <section className="flex flex-col gap-4">
-            {/* Section 1: Actions list */}
+        <section className="min-w-full w-full max-w-full basis-full snap-start flex flex-col gap-4 overflow-x-hidden md:min-w-0">
+            {/* Section 1: toggle-able Actions */}
             <div>
                 <h3 className="font-semibold mb-2">Actions</h3>
-                <div className="flex flex-col gap-3">
-                    {actions.length === 0 && (
-                        <p className="text-sm text-slate-400">
-                            No actions yet. Click “New Action” to create one.
-                        </p>
-                    )}
-
-                    {actions.map((a) => (
-                        <ActionPreviewCard
-                            key={a.id}
-                            action={a}
-                            tally={tallies[a.id] ?? { normal: 0, adv: 0, disadv: 0 }}
-                            onTally={onTally}
-                            advEnabled={advEnabled}
-                        />
-                    ))}
-                </div>
+                {actions.length === 0 ? (
+                    <p className="text-sm text-slate-400">
+                        No actions yet. Click “New Action” to create one.
+                    </p>
+                ) : (
+                    <div className="flex flex-wrap gap-2">
+                        {actions.map((a) => {
+                            const on = selectedActionIds.has(a.id);
+                            return (
+                                <button
+                                    key={a.id}
+                                    type="button"
+                                    onClick={() => toggleAction(a.id)}
+                                    aria-pressed={on}
+                                    className={`relative inline-flex items-center justify-center rounded-md border px-3 py-2 text-sm transition focus:outline-none focus:ring-2 focus:ring-offset-2 min-h-11 min-w-11 ${on ? "ring-2 ring-indigo-500 bg-indigo-50 text-indigo-900" : "bg-white"
+                                        }`}
+                                    title={on ? "Active" : "Inactive"}
+                                >
+                                    <span className="mr-1" aria-hidden>
+                                        {a.favorite ? "★" : "☆"}
+                                    </span>
+                                    <span className="truncate max-w-[12rem]">{a.name}</span>
+                                </button>
+                            );
+                        })}
+                    </div>
+                )}
             </div>
 
             {/* Section 2: Modifiers pickers */}
@@ -149,142 +222,37 @@ export default function ReadyPane({
                     </div>
                 </div>
             </div>
+
+            {/* Section 3: interactive previews for ACTIVE actions */}
+            <div>
+                <h4 className="font-semibold mb-2">Selected</h4>
+                <div className="flex flex-col gap-3">
+                    {activeActions.length === 0 ? (
+                        <p className="text-sm text-slate-400">No active actions selected.</p>
+                    ) : (
+                        activeActions.map((a) => {
+                            const t = tallies[a.id] ?? { normal: 0, adv: 0, disadv: 0 };
+                            return (
+                                <div key={a.id} className="w-full max-w-full">
+                                    <ActionPreviewCard
+                                        action={a}
+                                        counts={{ normal: t.normal ?? 0, adv: t.adv ?? 0, disadv: t.disadv ?? 0 }}
+                                        perActionModifiers={activePerActionModifiers}
+                                        perTurnModifiers={activePerTurnModifiers}
+                                        onInc={(kind) => inc(a.id, kind)}
+                                        onDec={(kind) => dec(a.id, kind)}
+                                    />
+                                </div>
+                            );
+                        })
+                    )}
+                </div>
+            </div>
         </section>
     );
 }
 
-/* -------------------------- subcomponents -------------------------- */
-
-function ActionPreviewCard({
-    action,
-    tally,
-    onTally,
-    advEnabled,
-}: {
-    action: ActionRecord;
-    tally: Tally;
-    onTally: (actionId: string, mode: RollMode, delta: 1 | -1) => void;
-    advEnabled: boolean;
-}) {
-    const toHit = action.factorsJson.toHit ?? { static: 0, signStatic: 1, dice: [] };
-    const dmg = action.factorsJson.damage ?? [];
-    const cond = action.factorsJson.conditions ?? {};
-
-    const hitPreview = formatToHitPreview(toHit.dice ?? [], toHit.static ?? 0, toHit.signStatic ?? 1);
-    const damagePreview = dmg.map((d) => formatDamagePreview(d.dice ?? [], d.static ?? 0, d.signStatic ?? 1, d.type));
-
-    const handleClick = (mode: RollMode) => onTally(action.id, mode, 1);
-    const handleContext = (e: React.MouseEvent, mode: RollMode) => {
-        e.preventDefault();
-        onTally(action.id, mode, -1);
-    };
-
-    return (
-        <div className="rounded-2xl border border-slate-700/70 p-3 bg-slate-900/40">
-            <div className="flex items-start justify-between gap-3">
-                <div className="min-w-0">
-                    <h5 className="font-semibold">{action.name}</h5>
-                    <div className="text-xs mt-1 space-y-0.5">
-                        <div>Attack: {hitPreview}</div>
-                        {damagePreview.map((s, i) => (
-                            <div key={i}>{s}</div>
-                        ))}
-                        <div className="text-[11px] text-slate-400">
-                            {formatConditions(cond)}
-                        </div>
-                    </div>
-                </div>
-
-                {/* Tally buttons */}
-                <div className="flex flex-col items-end gap-1">
-                    {advEnabled ? (
-                        <>
-                            <TallyButton
-                                label={`Adv (${tally.adv || 0})`}
-                                onClick={() => handleClick("adv")}
-                                onContextMenu={(e) => handleContext(e, "adv")}
-                            />
-                            <TallyButton
-                                label={`Normal (${tally.normal || 0})`}
-                                onClick={() => handleClick("normal")}
-                                onContextMenu={(e) => handleContext(e, "normal")}
-                            />
-                            <TallyButton
-                                label={`Disadv (${tally.disadv || 0})`}
-                                onClick={() => handleClick("disadv")}
-                                onContextMenu={(e) => handleContext(e, "disadv")}
-                            />
-                        </>
-                    ) : (
-                        <TallyButton
-                            label={`Add (${tally.normal || 0})`}
-                            onClick={() => handleClick("normal")}
-                            onContextMenu={(e) => handleContext(e, "normal")}
-                        />
-                    )}
-                </div>
-            </div>
-        </div>
-    );
-}
-
-function TallyButton({
-    label,
-    onClick,
-    onContextMenu,
-}: {
-    label: string;
-    onClick: () => void;
-    onContextMenu: (e: React.MouseEvent) => void;
-}) {
-    return (
-        <button
-            type="button"
-            className="rounded-lg bg-slate-700/70 hover:bg-slate-600 px-2 py-1 text-xs"
-            onClick={onClick}
-            onContextMenu={onContextMenu}
-            title="Right-click to decrement"
-        >
-            {label}
-        </button>
-    );
-}
-
 /* -------------------------- helpers -------------------------- */
-
-function formatToHitPreview(dice: DiceEntryToHit[], staticVal: number, signStatic: 1 | -1) {
-    const diceStr = dice && dice.length
-        ? dice.map((d) => `${d.count}d${d.size}${d.canCrit ? "*" : ""}${d.signDice === -1 ? " (−)" : ""}`).join(" + ")
-        : "—";
-    const staticStr = staticVal ? ` ${signStatic === -1 ? "−" : "+"} ${Math.abs(staticVal)}` : "";
-    return `${diceStr}${staticStr}`;
-}
-
-function formatDamagePreview(dice: DiceEntry[], staticVal: number, signStatic: 1 | -1, type: string | null | undefined) {
-    const diceStr = dice && dice.length
-        ? dice.map((d) => `${d.count}d${d.size}${d.signDice === -1 ? " (−)" : ""}`).join(" + ")
-        : staticVal ? "Flat" : "—";
-    const staticStr = staticVal ? ` ${signStatic === -1 ? "−" : "+"} ${Math.abs(staticVal)}` : "";
-    const t = type == null ? "Undefined" : type;
-    return `${diceStr}${staticStr} ${t}`;
-}
-
-function formatConditions(c?: {
-    wielding?: "weapon" | "unarmed";
-    distance?: "melee" | "ranged";
-    spell?: boolean;
-}) {
-    if (!c) return "";
-    const bits: string[] = [];
-    if (c.distance) bits.push(cap(c.distance));
-    if (c.wielding) bits.push(cap(c.wielding));
-    if (c.spell) bits.push("Spell");
-    return bits.length ? bits.join(" ") : "";
-}
-
-function cap(s: string) {
-    return s.charAt(0).toUpperCase() + s.slice(1);
-}
 
 // visual-only flag (no filtering)
 function isIncompatible(_m: ModifierRecord) {

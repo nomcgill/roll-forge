@@ -15,9 +15,9 @@ type Props = {
 
 export default function HistoryPane({ history, onToggleRow }: Props) {
     return (
-        <div className="flex flex-col gap-4">
+        <div className="min-w-full w-full max-w-full basis-full snap-start overflow-x-hidden md:min-w-0">
             {history.map((g) => (
-                <section key={g.id} className="attackSet activeSection rounded-xl border border-slate-700 p-3">
+                <section key={g.id} className="attackSet activeSection w-full max-w-full overflow-x-hidden rounded-xl border border-slate-700 p-3">
                     {g.rows.map((row) => (
                         <Row key={row.id} gId={g.id} row={row} onToggleRow={onToggleRow} />
                     ))}
@@ -76,7 +76,7 @@ function Row({
                     {row.kind === "action" ? row.successTotal : "+"}
                 </div>
 
-                <div className="flex-1 attack-card flex items-start justify-between gap-3">
+                <div className="flex-1 min-w-0 attack-card flex items-start justify-between gap-3">
                     <div>
                         <h2 className="font-semibold">{row.name}</h2>
                         <p className="text-xs">
@@ -88,12 +88,12 @@ function Row({
                         )}
                     </div>
 
-                    <ul className="list-none p-0 m-0 flex flex-wrap gap-2">
+                    <ul className="list-none p-0 m-0 flex flex-wrap gap-2 w-full">
                         {row.damage.map((d, i) => (
                             <li key={i} className="w-[130px]">
                                 <span
                                     title={d.parts.join(" | ")}
-                                    className="damage-result block text-sm"
+                                    className="damage-result block text-sm break-words"
                                 >
                                     <span className="font-semibold">{d.amount}</span> {d.typeLabel}
                                 </span>
