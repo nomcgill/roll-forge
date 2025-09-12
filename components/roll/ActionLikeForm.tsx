@@ -1,3 +1,4 @@
+// components/roll/ActionLikeForm.tsx
 "use client";
 
 import { useMemo, useState } from "react";
@@ -9,6 +10,7 @@ import type {
 import DiceListEditor, { DiceEntry } from "./DiceListEditor";
 import DamageTypeSelect from "./DamageTypeSelect";
 import { actionCreateSchema, actionModifierCreateSchema } from "@/lib/validation/actionSchemas";
+import ActionPreviewCard from "./ActionPreviewCard";
 
 type Variant = "action" | "modifier";
 
@@ -74,21 +76,21 @@ export default function ActionLikeForm({
 
     // Action-only: toHit
     const [toHitStatic, setToHitStatic] = useState<number>(isAction ? (initialAction?.factorsJson.toHit?.static ?? 0) : 0);
-    const [toHitSign, setToHitSign] = useState<Signed>(isAction ? (initialAction?.factorsJson.toHit?.signStatic ?? 1 as Signed) : 1);
+    const [toHitSign, setToHitSign] = useState<Signed>(isAction ? (initialAction?.factorsJson.toHit?.signStatic ?? (1 as Signed)) : (1 as Signed));
     const [toHitDice, setToHitDice] = useState<DiceEntry[]>(
         isAction
             ? (initialAction?.factorsJson.toHit?.dice
-                ?? [{ count: 1, size: 20 as DieSize, signDice: 1, canCrit: true }])
+                ?? [{ count: 1, size: 20 as DieSize, signDice: 1 as Signed, canCrit: true }])
             : []
     );
 
     // Modifier-only: eachAttack + attackImpact
     const [eachAttack, setEachAttack] = useState<boolean>(!isAction ? (initialModifier?.factorsJson.eachAttack ?? true) : true);
     const [impactStatic, setImpactStatic] = useState<number>(!isAction ? (initialModifier?.factorsJson.attackImpact?.static ?? 0) : 0);
-    const [impactSign, setImpactSign] = useState<Signed>(!isAction ? (initialModifier?.factorsJson.attackImpact?.signStatic ?? 1 as Signed) : 1);
+    const [impactSign, setImpactSign] = useState<Signed>(!isAction ? (initialModifier?.factorsJson.attackImpact?.signStatic ?? (1 as Signed)) : (1 as Signed));
     const [impactDice, setImpactDice] = useState<DiceEntry[]>(
         !isAction
-            ? (initialModifier?.factorsJson.attackImpact?.dice ?? []).map(x => ({ count: x.count, size: x.size, signDice: x.signDice }))
+            ? (initialModifier?.factorsJson.attackImpact?.dice ?? []).map(x => ({ count: x.count, size: x.size, signDice: x.signDice as Signed }))
             : []
     );
 
@@ -99,7 +101,7 @@ export default function ActionLikeForm({
                 type: d.type ?? null,
                 static: d.static ?? 0,
                 signStatic: (d.signStatic ?? 1) as Signed,
-                dice: (d.dice ?? []).map(x => ({ count: x.count, size: x.size, signDice: x.signDice })),
+                dice: (d.dice ?? []).map(x => ({ count: x.count, size: x.size, signDice: (x.signDice ?? 1) as Signed })),
             }));
         } else {
             return (initialModifier?.factorsJson.damage ?? []).map(d => ({
@@ -107,7 +109,7 @@ export default function ActionLikeForm({
                 source: d.source ?? "",
                 static: d.static ?? 0,
                 signStatic: (d.signStatic ?? 1) as Signed,
-                dice: (d.dice ?? []).map(x => ({ count: x.count, size: x.size, signDice: x.signDice })),
+                dice: (d.dice ?? []).map(x => ({ count: x.count, size: x.size, signDice: (x.signDice ?? 1) as Signed })),
             }));
         }
     };
@@ -118,8 +120,8 @@ export default function ActionLikeForm({
         setDamage(d => [
             ...d,
             isAction
-                ? ({ type: null, static: 0, signStatic: 1, dice: [] } as ActionDamageLine)
-                : ({ type: eachAttack ? null : (damageOptions[0] ?? "slashing"), source: "", static: 0, signStatic: 1, dice: [] } as ModifierDamageLine),
+                ? ({ type: null, static: 0, signStatic: 1 as Signed, dice: [] } as ActionDamageLine)
+                : ({ type: eachAttack ? null : (damageOptions[0] ?? "slashing"), source: "", static: 0, signStatic: 1 as Signed, dice: [] } as ModifierDamageLine),
         ]);
     }
 
@@ -145,6 +147,48 @@ export default function ActionLikeForm({
     const toHitStaticErr = errorPaths.has("factorsJson.toHit.static");
     const impactStaticErr = errorPaths.has("factorsJson.attackImpact.static");
 
+    // Draft action preview (read-only card at bottom when variant === "action")
+    const draftAction: ActionRecord | null = useMemo(() => {
+        if (!isAction) return null;
+        const f: ActionFactors = {
+            conditions: {
+                wielding: wielding || undefined,
+                distance: distance || undefined,
+                spell: !!spell || undefined,
+            },
+            toHit: {
+                static: toHitStatic || 0,
+                signStatic: toHitSign,
+                dice: toHitDice.map(d => ({
+                    count: d.count,
+                    size: d.size,
+                    signDice: (d.signDice ?? 1) as Signed,
+                    canCrit: d.canCrit === true,
+                })),
+            },
+            damage: (damage as ActionDamageLine[]).map(d => ({
+                type: d.type,
+                static: d.static || 0,
+                signStatic: (d.signStatic ?? 1) as Signed,
+                dice: (d.dice ?? []).map(x => ({
+                    count: x.count,
+                    size: x.size,
+                    signDice: (x.signDice ?? 1) as Signed,
+                })),
+            })),
+            favorite,
+        };
+        return {
+            id: "preview",
+            characterId,
+            name: name || "(unnamed action)",
+            favorite,
+            factorsJson: f,
+            createdAt: new Date(),
+        } as ActionRecord;
+        // dependencies
+    }, [isAction, characterId, name, favorite, wielding, distance, spell, toHitStatic, toHitSign, toHitDice, damage]);
+
     async function onSubmit(e: React.FormEvent) {
         e.preventDefault();
         setErrors([]);
@@ -161,14 +205,19 @@ export default function ActionLikeForm({
                     toHit: {
                         static: toHitStatic || 0,
                         signStatic: toHitSign,
-                        dice: toHitDice.map(d => ({ count: d.count, size: d.size, signDice: d.signDice, canCrit: d.canCrit })),
+                        dice: toHitDice.map(d => ({
+                            count: d.count,
+                            size: d.size,
+                            signDice: (d.signDice ?? 1) as Signed,
+                            canCrit: d.canCrit === true,
+                        })),
                     },
                     // Actions allow type: null (user-facing "Undefined" in sums later)
                     damage: (damage as ActionDamageLine[]).map((d) => ({
                         type: d.type,
                         static: d.static || 0,
-                        signStatic: d.signStatic,
-                        dice: (d.dice ?? []).map((x) => ({ count: x.count, size: x.size, signDice: x.signDice })),
+                        signStatic: (d.signStatic ?? 1) as Signed,
+                        dice: (d.dice ?? []).map((x) => ({ count: x.count, size: x.size, signDice: (x.signDice ?? 1) as Signed })),
                     })),
                     favorite,
                 };
@@ -219,14 +268,18 @@ export default function ActionLikeForm({
                     attackImpact: {
                         static: impactStatic || 0,
                         signStatic: impactSign,
-                        dice: impactDice.map(d => ({ count: d.count, size: d.size, signDice: d.signDice })),
+                        dice: impactDice.map(d => ({
+                            count: d.count,
+                            size: d.size,
+                            signDice: (d.signDice ?? 1) as Signed,
+                        })),
                     },
                     damage: (damage as ModifierDamageLine[]).map((d) => ({
                         type: d.type, // may be null ONLY when eachAttack=true
                         source: d.source ? String(d.source).slice(0, 18) : undefined,
                         static: d.static || 0,
-                        signStatic: d.signStatic,
-                        dice: (d.dice ?? []).map((x) => ({ count: x.count, size: x.size, signDice: x.signDice })),
+                        signStatic: (d.signStatic ?? 1) as Signed,
+                        dice: (d.dice ?? []).map((x) => ({ count: x.count, size: x.size, signDice: (x.signDice ?? 1) as Signed })),
                     })),
                     favorite,
                 };
@@ -276,6 +329,18 @@ export default function ActionLikeForm({
 
     return (
         <form onSubmit={onSubmit} className="space-y-4">
+            {isAction && draftAction && (
+                <div className="sticky top-2 z-10 space-y-2">
+                    <div className="text-sm text-slate-300">Preview</div>
+                    <ActionPreviewCard
+                        action={draftAction}
+                        counts={{ normal: 0, adv: 0, disadv: 0 }}
+                        perActionModifiers={[]}
+                        perTurnModifiers={[]}
+                        interactive={false}
+                    />
+                </div>
+            )}
             <div>
                 <label className="text-sm">Name</label>
                 <input
@@ -403,8 +468,8 @@ export default function ActionLikeForm({
                                     hasError={typeErr}
                                 />
                                 <div className="flex rounded-xl overflow-hidden border border-slate-700">
-                                    <button type="button" className={`px-2 py-1 text-sm ${line.signStatic !== -1 ? "bg-slate-800" : "bg-slate-900 text-slate-400"}`} onClick={() => updateDamage(i, { signStatic: 1 })}>+</button>
-                                    <button type="button" className={`px-2 py-1 text-sm border-l border-slate-700 ${line.signStatic === -1 ? "bg-slate-800" : "bg-slate-900 text-slate-400"}`} onClick={() => updateDamage(i, { signStatic: -1 })}>−</button>
+                                    <button type="button" className={`px-2 py-1 text-sm ${line.signStatic !== -1 ? "bg-slate-800" : "bg-slate-900 text-slate-400"}`} onClick={() => updateDamage(i, { signStatic: 1 as Signed })}>+</button>
+                                    <button type="button" className={`px-2 py-1 text-sm border-l border-slate-700 ${line.signStatic === -1 ? "bg-slate-800" : "bg-slate-900 text-slate-400"}`} onClick={() => updateDamage(i, { signStatic: -1 as Signed })}>−</button>
                                 </div>
                                 <input
                                     type="number"
@@ -431,7 +496,7 @@ export default function ActionLikeForm({
                                 value={(line as any).dice ?? []}
                                 onChange={(v) => updateDamage(i, { dice: v.slice(0, MAX_DICE_ROWS) })}
                                 allowCanCrit={false}
-                                maxRows={MAX_DICE_ROWS}
+                                maxRows={MAX_DAMAGE_LINES}
                                 errorPaths={errorPaths}
                                 pathPrefix={`factorsJson.damage.${i}.dice`}
                             />
