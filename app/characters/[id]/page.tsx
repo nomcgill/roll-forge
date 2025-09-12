@@ -1,3 +1,4 @@
+// app/characters/[id]/page.tsx
 export const dynamic = "force-dynamic";
 export const revalidate = 0;
 export const runtime = "nodejs";
@@ -8,12 +9,24 @@ import { authOptions } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
 import { getUserId } from "@/lib/session";
 import type { ReactElement } from "react";
+
 import CharacterDetails from "@/components/CharacterDetails";
 import RollWorkspace from "@/components/roll/RollWorkspace";
 
+import {
+    actionCreateSchema,
+    actionModifierCreateSchema,
+} from "@/lib/validation/actionSchemas";
+import type {
+    ActionFactorsType,
+    ActionModifierFactorsType,
+} from "@/lib/validation/actionSchemas";
+import type {
+    ActionRecord,
+    ModifierRecord,
+} from "@/components/roll/types";
 
 type CharacterPageProps = {
-    // Next.js may provide async params; await before using.
     params: Promise<{ id: string }>;
 };
 
@@ -29,16 +42,60 @@ export default async function CharacterPage({ params }: CharacterPageProps): Pro
 
     const character = await prisma.character.findFirst({
         where: { id, userId },
+        select: { id: true, name: true, avatarUrl: true, userId: true, preferences: true },
     });
-
     if (!character) {
         notFound();
     }
 
+    // Read from Prisma
+    const [actionsRaw, modifiersRaw] = await Promise.all([
+        prisma.action.findMany({
+            where: { characterId: id },
+            select: {
+                id: true,
+                characterId: true,
+                name: true,
+                favorite: true,
+                factorsJson: true,
+                createdAt: true,
+            },
+            orderBy: [{ favorite: "desc" }, { name: "asc" }],
+        }),
+        prisma.actionModifier.findMany({
+            where: { characterId: id },
+            select: {
+                id: true,
+                characterId: true,
+                name: true,
+                favorite: true,
+                factorsJson: true,
+                createdAt: true,
+            },
+            orderBy: [{ favorite: "desc" }, { name: "asc" }],
+        }),
+    ]);
+
+    // Normalize JSON with Zod → concrete UI types
+    const actions: ActionRecord[] = actionsRaw.map((a) => ({
+        ...a,
+        factorsJson: actionCreateSchema.shape.factorsJson.parse(a.factorsJson) as ActionFactorsType,
+    }));
+
+    const modifiers: ModifierRecord[] = modifiersRaw.map((m) => ({
+        ...m,
+        factorsJson: actionModifierCreateSchema.shape.factorsJson.parse(m.factorsJson) as ActionModifierFactorsType,
+    }));
+
     return (
-        <main className="px-4 py-4 md:px-6 lg:px-8">
+        <main className="px-4 py-4 md:px-6 lg:px-8 space-y-6">
             <CharacterDetails character={character} />
-            <RollWorkspace characterId={id} />
+            <RollWorkspace
+                characterId={id}
+                preferences={character.preferences as any}
+                initialActions={actions}
+                initialModifiers={modifiers}
+            />
         </main>
     );
 }

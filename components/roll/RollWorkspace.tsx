@@ -107,6 +107,11 @@ export default function RollWorkspace(props: Props) {
             const url = new URL(window.location.href);
             url.searchParams.set("mode", m);
             router.push(`${url.pathname}?${url.searchParams.toString()}`);
+            if (m === "history") {
+                setTimeout(() => scrollToPane("history"), 100);
+            } else if (m === "ready") {
+                setTimeout(() => scrollToPane("ready"), 100);
+            }
         },
         [router]
     );
@@ -182,99 +187,121 @@ export default function RollWorkspace(props: Props) {
         );
     };
 
+    const scrollToPane = (which: "ready" | "history") => {
+        const scroller = document.querySelector('[data-scroll="panes"]') as HTMLElement | null;
+        const pane = document.querySelector(which === "history" ? '[data-pane="history"]' : '[data-pane="ready"]') as HTMLElement | null;
+        if (scroller && pane) {
+            scroller.scrollTo({ left: pane.offsetLeft, behavior: "smooth" });
+        }
+    };
+
     const onCancelForm = () => pushMode("ready");
     const onSavedForm = () => pushMode("ready");
 
     return (
-        <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
-            {/* LEFT / READY */}
-            <div>
-                <header className="mb-2 flex items-center justify-between gap-3">
-                    <h2 className="text-xl font-bold">Ready an Action</h2>
+        <div
+            data-scroll="panes"
+            className="overflow-x-auto snap-x snap-mandatory overscroll-x-contain scroll-smooth lg:overflow-visible"
+        >
+            <div className="flex flex-nowrap gap-0 lg:grid lg:grid-cols-2 lg:gap-4">
 
-                    {mode === "ready" && (
-                        <div className="flex items-center gap-2">
-                            <button
-                                type="button"
-                                className="rounded-lg bg-slate-700/70 hover:bg-slate-600 px-3 py-1.5 text-xs font-semibold"
-                                onClick={() => pushMode("new-action")}
-                            >
-                                New Action
-                            </button>
-                            <button
-                                type="button"
-                                className="rounded-lg bg-slate-700/70 hover:bg-slate-600 px-3 py-1.5 text-xs font-semibold"
-                                onClick={() => pushMode("new-modifier")}
-                            >
-                                New Modifier
-                            </button>
-                        </div>
-                    )}
-                </header>
+                {/* LEFT / READY */}
+                <div data-pane="ready" className="min-w-full basis-full snap-start snap-always lg:min-w-0">
+                    <header className="mb-2 flex items-center justify-between gap-3">
+                        <h2 className="text-xl font-bold">Ready an Action</h2>
 
-                {mode === "new-action" ? (
-                    <ActionLikeForm
-                        variant="action"
-                        characterId={characterId}
-                        preferences={prefs}
-                        onCancel={onCancelForm}
-                        onSaved={onSavedForm}
-                    />
-                ) : mode === "new-modifier" ? (
-                    <ActionLikeForm
-                        variant="modifier"
-                        characterId={characterId}
-                        preferences={prefs}
-                        onCancel={onCancelForm}
-                        onSaved={onSavedForm}
-                    />
-                ) : (
-                    <>
-                        <ReadyPane
-                            actions={actions}
-                            modifiers={modifiers}
-                            tallies={tallies}
-                            onTally={onTally}
-                            selectedPerActionModifierIds={perActionSelected}
-                            selectedPerTurnModifierIds={perTurnSelected}
-                            onToggleModifier={onToggleModifier}
+                        {mode === "ready" && (
+                            <div className="flex items-center gap-2">
+                                <button
+                                    type="button"
+                                    className="rounded-lg bg-slate-700/70 hover:bg-slate-600 px-3 py-1.5 text-xs font-semibold"
+                                    onClick={() => pushMode("new-action")}
+                                >
+                                    New Action
+                                </button>
+                                <button
+                                    type="button"
+                                    className="rounded-lg bg-slate-700/70 hover:bg-slate-600 px-3 py-1.5 text-xs font-semibold"
+                                    onClick={() => pushMode("new-modifier")}
+                                >
+                                    New Modifier
+                                </button>
+                            </div>
+                        )}
+                    </header>
+
+                    {mode === "new-action" ? (
+                        <ActionLikeForm
+                            variant="action"
+                            characterId={characterId}
                             preferences={prefs}
+                            onCancel={onCancelForm}
+                            onSaved={onSavedForm}
                         />
+                    ) : mode === "new-modifier" ? (
+                        <ActionLikeForm
+                            variant="modifier"
+                            characterId={characterId}
+                            preferences={prefs}
+                            onCancel={onCancelForm}
+                            onSaved={onSavedForm}
+                        />
+                    ) : (
+                        <>
+                            <ReadyPane
+                                actions={actions}
+                                modifiers={modifiers}
+                                tallies={tallies}
+                                onTally={onTally}
+                                selectedPerActionModifierIds={perActionSelected}
+                                selectedPerTurnModifierIds={perTurnSelected}
+                                onToggleModifier={onToggleModifier}
+                                preferences={prefs}
+                            />
 
-                        <div className="sticky bottom-2 pt-3">
+                            <div className="sticky bottom-2 pt-3">
+                                <button
+                                    type="button"
+                                    disabled={!hasAnyTallies}
+                                    onClick={onRoll}
+                                    className={`mx-auto block w-full md:w-2/3 lg:w-3/4 xl:w-2/3 rounded-2xl px-4 py-3 font-bold
+                  ${hasAnyTallies
+                                            ? "bg-slate-200 text-slate-900 hover:bg-white"
+                                            : "bg-slate-700 text-slate-400 cursor-not-allowed"
+                                        }`}
+                                >
+                                    Roll Them Bones
+                                </button>
+                            </div>
+                        </>
+                    )}
+                </div>
+
+                {/* RIGHT / HISTORY */}
+                <div data-pane="history" className="min-w-full basis-full snap-start snap-always lg:min-w-0">
+                    <header className="mb-2 flex items-center justify-between">
+                        <h2 className="text-xl font-bold lg:block hidden">Roll History</h2>
+                        {history.length > 0 && (
                             <button
                                 type="button"
-                                disabled={!hasAnyTallies}
-                                onClick={onRoll}
-                                className={`mx-auto block w-full md:w-2/3 lg:w-3/4 xl:w-2/3 rounded-2xl px-4 py-3 font-bold
-                  ${hasAnyTallies
-                                        ? "bg-slate-200 text-slate-900 hover:bg-white"
-                                        : "bg-slate-700 text-slate-400 cursor-not-allowed"
-                                    }`}
+                                onClick={() => setHistory([])}
+                                className="hidden lg:inline-block text-xs rounded border px-2 py-1 border-slate-600 hover:bg-slate-800"
                             >
-                                Roll Them Bones
+                                Clear
                             </button>
-                        </div>
-                    </>
-                )}
-            </div>
-
-            {/* RIGHT / HISTORY */}
-            <div>
-                <header className="mb-2 flex items-center justify-between">
-                    <h2 className="text-xl font-bold lg:block hidden">Roll History</h2>
-                    {history.length > 0 && (
+                        )}
                         <button
                             type="button"
-                            onClick={() => setHistory([])}
-                            className="hidden lg:inline-block text-xs rounded border px-2 py-1 border-slate-600 hover:bg-slate-800"
+                            onClick={() => pushMode("ready")}
+                            className="block lg:hidden text-xs rounded border px-2 py-1 border-slate-600 hover:bg-slate-800"
                         >
-                            Clear
+                            ← Back to Ready
                         </button>
-                    )}
-                </header>
 
-                <HistoryPane history={history} onToggleRow={onToggleRow} />
+                    </header>
+
+                    <HistoryPane history={history} onToggleRow={onToggleRow} />
+                </div>
             </div>
         </div>
     );

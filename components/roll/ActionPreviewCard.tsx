@@ -40,7 +40,7 @@ export default function ActionPreviewCard({
     const chips = friendlyConditions(conditions);
 
     return (
-        <div className="rounded-md border border-neutral-700 bg-neutral-900 text-neutral-100 p-3 sm:p-4">
+        <div className="w-full max-w-full rounded-md border border-neutral-700 bg-neutral-900 text-neutral-100 p-3 sm:p-4">
             <div className="flex items-stretch justify-between gap-4">
                 {/* LEFT: Name → Conditions → Hit → Damage */}
                 <div className="min-w-0 flex-1 space-y-2">
@@ -185,7 +185,7 @@ function TallyButton({
     };
 
     const active = count > 0;
-    const wrap = "w-28 select-none rounded-md border text-left px-2 py-2 text-sm transition";
+    const wrap = "w-24 sm:w-28 select-none rounded-md border text-left px-2 py-2 text-sm transition";
     const bg = active ? "border-indigo-700/50 bg-indigo-500/10" : "border-neutral-700 bg-neutral-800";
 
     return (
