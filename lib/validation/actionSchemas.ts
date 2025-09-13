@@ -137,11 +137,28 @@ export const actionCreateSchema = z.object({
   factorsJson: ActionFactors,
 });
 
-export const actionModifierCreateSchema = z.object({
-  name: z.string().min(1, "Required").max(25, "Must be ≤ 25 characters"),
-  favorite: z.boolean().optional().default(false),
-  factorsJson: ActionModifierFactors,
-});
+export const actionModifierCreateSchema = z
+  .object({
+    name: z.string().min(1, "Required").max(25, "Must be ≤ 25 characters"),
+    favorite: z.boolean().optional().default(false),
+    // accept optional top-level eachAttack so callers/tests can pass it here
+    eachAttack: z.boolean().optional(),
+    factorsJson: ActionModifierFactors,
+  })
+  .superRefine((val, ctx) => {
+    // If top-level eachAttack is provided and false, enforce non-null damage.type in factorsJson
+    if (val.eachAttack === false) {
+      (val.factorsJson?.damage ?? []).forEach((row, idx) => {
+        if (row.type === null) {
+          ctx.addIssue({
+            code: z.ZodIssueCode.custom,
+            path: ["factorsJson", "damage", idx, "type"],
+            message: "Per-turn modifiers must specify a damage type.",
+          });
+        }
+      });
+    }
+  });
 
 /** also export the factor schemas in case server routes need them */
 export type ActionFactorsType = z.infer<typeof ActionFactors>;

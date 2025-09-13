@@ -1,3 +1,5 @@
+import { render } from "@testing-library/react";
+
 const mockGetServerSession = jest.fn();
 jest.mock("next-auth", () => ({
     getServerSession: (...args: unknown[]) => mockGetServerSession(...args),
@@ -20,7 +22,21 @@ const redirect = jest.fn((url: string) => {
     e.url = url;
     throw e;
 });
-jest.mock("next/navigation", () => ({ redirect }));
+jest.mock("next/navigation", () => ({
+    __esModule: true,
+    redirect: jest.fn((url?: string) => {
+        const e: any = new Error("NEXT_REDIRECT");
+        e.digest = "NEXT_REDIRECT";
+        e.url = url;
+        throw e;
+    }),
+    notFound: jest.fn(() => {
+        const e: any = new Error("NEXT_NOT_FOUND");
+        e.digest = "NEXT_NOT_FOUND";
+        throw e;
+    }),
+    useRouter: () => ({ push: jest.fn(), replace: jest.fn() }),
+}));
 
 // (Optional) If CharacterList renders heavy JSX, you can stub it:
 jest.mock("@/components/CharacterList", () => ({
@@ -37,12 +53,29 @@ describe("CharactersPage (list)", () => {
         jest.clearAllMocks();
     });
 
-    it("redirects unauthenticated users to sign-in with callbackUrl", async () => {
+    it("shows sign-in CTA with callbackUrl for unauthenticated users (no redirect)", async () => {
+        // Arrange
         mockGetServerSession.mockResolvedValueOnce(null);
 
-        await expect(CharactersPage()).rejects.toMatchObject({ digest: "NEXT_REDIRECT" });
-        const expected = `/api/auth/signin?callbackUrl=${encodeURIComponent("/characters")}`;
-        expect(redirect).toHaveBeenCalledWith(expected);
+        // Act: server component returns a React node when unauthenticated
+        const ui = await CharactersPage();
+
+        // Assert: render the node and verify CTA
+        const { getByRole, queryByText } = render(ui as any);
+
+        // Heading sanity check (optional)
+        expect(queryByText("Your Characters")).toBeTruthy();
+
+        // CTA link exists and points to signin with callbackUrl=/characters
+        const link = getByRole("link", { name: /sign in/i });
+        expect(link).toBeTruthy();
+        expect(link).toHaveAttribute(
+            "href",
+            `/api/auth/signin?callbackUrl=${encodeURIComponent("/characters")}`
+        );
+
+        // And since we don’t redirect in this branch, ensure redirect() wasn’t called
+        expect(redirect).not.toHaveBeenCalled();
         expect(mockFindMany).not.toHaveBeenCalled();
     });
 

@@ -18,6 +18,16 @@ const common = {
   // Most transforms are handled by next/jest; no ts-jest preset needed
 };
 
+const appConfig = {
+  displayName: "app",
+  testEnvironment: "jsdom",
+  testMatch: [
+    "<rootDir>/__tests__/app/**/*.test.ts?(x)",
+    "<rootDir>/__tests__/smoke.test.ts", // root smoke test
+  ],
+  ...common,
+};
+
 const clientConfig = {
   displayName: "client",
   testEnvironment: "jsdom",
@@ -37,10 +47,19 @@ const apiConfig = {
   ...common,
 };
 
+const libConfig = {
+  displayName: "lib",
+  testEnvironment: "node", // good default for utilities/engines
+  testMatch: ["<rootDir>/__tests__/lib/**/*.test.ts?(x)"],
+  ...common,
+};
+
 export default async () => {
+  const app = await createJestConfig(appConfig)();
   const client = await createJestConfig(clientConfig)();
   const api = await createJestConfig(apiConfig)();
+  const lib = await createJestConfig(libConfig)();
   return {
-    projects: [client, api],
+    projects: [client, api, lib, app],
   };
 };
