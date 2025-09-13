@@ -1,25 +1,40 @@
+/**
+ * @jest-environment jsdom
+ */
+
+import { render, screen } from "@testing-library/react";
+
+// next/navigation (inline mocks to avoid TDZ)
+jest.mock("next/navigation", () => ({
+    __esModule: true,
+    redirect: jest.fn((url?: string) => {
+        const e: any = new Error("NEXT_REDIRECT");
+        e.digest = "NEXT_REDIRECT";
+        e.url = url;
+        throw e;
+    }),
+    notFound: jest.fn(() => {
+        const e: any = new Error("NEXT_NOT_FOUND");
+        e.digest = "NEXT_NOT_FOUND";
+        throw e;
+    }),
+}));
+
+// next-auth
 const mockGetServerSession = jest.fn();
 jest.mock("next-auth", () => ({
     getServerSession: (...args: unknown[]) => mockGetServerSession(...args),
 }));
 jest.mock("@/lib/auth", () => ({ authOptions: {} as unknown }));
 
-// Mock redirect behavior like your other page tests
-const redirect = jest.fn((url: string) => {
-    const e: any = new Error("NEXT_REDIRECT");
-    e.digest = "NEXT_REDIRECT";
-    e.url = url;
-    throw e;
-});
-jest.mock("next/navigation", () => ({ redirect }));
-
-// Stub the client-only SignOutButton so server-render test stays simple
-jest.mock("@/components/Account/SignOutButton", () => ({
-    __esModule: true,
-    default: () => <button aria-label="Sign out">Sign Out</button>,
+// headers() safe default
+jest.mock("next/headers", () => ({
+    headers: () => ({ get: (_: string) => undefined }),
 }));
 
+// Import after mocks
 import AccountPage from "@/app/account/page";
+import { redirect, notFound } from "next/navigation";
 
 describe("Account page", () => {
     beforeEach(() => {
@@ -36,24 +51,23 @@ describe("Account page", () => {
     });
 
     it("renders 'Back to Characters' link and sign-out button for authenticated users", async () => {
-        mockGetServerSession.mockResolvedValueOnce({ user: { id: "user_abc" } });
+        mockGetServerSession.mockResolvedValueOnce({
+            user: { id: "user_abc", name: "Nolan", email: "nolan@example.com" },
+            expires: "2999-01-01T00:00:00.000Z",
+        });
 
         const ui = await AccountPage();
-        // Render the returned JSX to assert content
-        // (Using Testing Library render here would require jsdom; this inline
-        // check is sufficient because we mocked SignOutButton.)
-        expect(ui).toBeTruthy();
-
-        // To assert content, mount with RTL:
-        // (If your page tests already use RTL for SSR pages, do that instead.)
-        // For clarity and consistency with your other page tests, here is the RTL approach:
-
-        const { render, screen } = await import("@testing-library/react");
         render(ui as any);
 
-        const backLink = screen.getByRole("link", { name: /back to your character list/i });
+        const backLink = screen.getByRole("link", {
+            name: /back to your character list/i,
+        });
+        expect(backLink).toBeTruthy();
         expect(backLink).toHaveAttribute("href", "/characters");
 
-        expect(screen.getByRole("button", { name: /sign out/i })).toBeInTheDocument();
+        expect(screen.queryByText(/sign out/i)).toBeTruthy();
+
+        expect(redirect).not.toHaveBeenCalled();
+        expect(notFound).not.toHaveBeenCalled();
     });
 });
