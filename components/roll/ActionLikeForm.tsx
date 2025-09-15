@@ -224,7 +224,6 @@ export default function ActionLikeForm({
 
                 const payload = { name, favorite, factorsJson };
 
-                // preflight
                 const pre = preflightIssuesForAction(payload, toHitDice, damage as ActionDamageLine[]);
                 if (pre.messages.length) {
                     setErrors(pre.messages);
@@ -378,10 +377,22 @@ export default function ActionLikeForm({
                 </div>
             </fieldset>
 
-            {/* Action-only: toHit */}
+            {/* Action-only: toHit (DICE FIRST, then static) */}
             {isAction && (
                 <fieldset className="border border-slate-700 rounded-xl p-3 space-y-3">
                     <legend className="px-2 text-sm text-slate-300">To-Hit</legend>
+
+                    <DiceListEditor
+                        label="To-hit dice"
+                        value={toHitDice}
+                        onChange={(v) => setToHitDice(v.slice(0, MAX_DICE_ROWS))}
+                        allowCanCrit={true}
+                        canCritEnabledGlobal={preferences.critRules !== null}
+                        maxRows={MAX_DICE_ROWS}
+                        errorPaths={errorPaths}
+                        pathPrefix="factorsJson.toHit.dice"
+                    />
+
                     <div className="grid grid-cols-12 gap-2 items-center">
                         <div className="col-span-3 flex rounded-xl overflow-hidden border border-slate-700">
                             <button type="button" className={`px-2 py-1 text-sm ${toHitSign !== -1 ? "bg-slate-800" : "bg-slate-900 text-slate-400"}`} onClick={() => setToHitSign(1)}>+</button>
@@ -395,21 +406,10 @@ export default function ActionLikeForm({
                             aria-invalid={toHitStaticErr}
                         />
                     </div>
-
-                    <DiceListEditor
-                        label="To-hit dice"
-                        value={toHitDice}
-                        onChange={(v) => setToHitDice(v.slice(0, MAX_DICE_ROWS))}
-                        allowCanCrit={true}
-                        canCritEnabledGlobal={preferences.critRules !== null}
-                        maxRows={MAX_DICE_ROWS}
-                        errorPaths={errorPaths}
-                        pathPrefix="factorsJson.toHit.dice"
-                    />
                 </fieldset>
             )}
 
-            {/* Modifier-only: eachAttack + attackImpact */}
+            {/* Modifier-only: eachAttack + attackImpact (DICE FIRST, then static) */}
             {!isAction && (
                 <>
                     <div className="flex items-center gap-3">
@@ -421,6 +421,17 @@ export default function ActionLikeForm({
 
                     <fieldset className="border border-slate-700 rounded-xl p-3 space-y-3">
                         <legend className="px-2 text-sm text-slate-300">Attack Impact (to-hit)</legend>
+
+                        <DiceListEditor
+                            label="To-hit impact dice"
+                            value={impactDice}
+                            onChange={(v) => setImpactDice(v.slice(0, MAX_DICE_ROWS))}
+                            allowCanCrit={false}
+                            maxRows={MAX_DICE_ROWS}
+                            errorPaths={errorPaths}
+                            pathPrefix="factorsJson.attackImpact.dice"
+                        />
+
                         <div className="grid grid-cols-12 gap-2 items-center">
                             <div className="col-span-3 flex rounded-xl overflow-hidden border border-slate-700">
                                 <button type="button" className={`px-2 py-1 text-sm ${impactSign !== -1 ? "bg-slate-800" : "bg-slate-900 text-slate-400"}`} onClick={() => setImpactSign(1)}>+</button>
@@ -434,21 +445,11 @@ export default function ActionLikeForm({
                                 aria-invalid={impactStaticErr}
                             />
                         </div>
-
-                        <DiceListEditor
-                            label="To-hit impact dice"
-                            value={impactDice}
-                            onChange={(v) => setImpactDice(v.slice(0, MAX_DICE_ROWS))}
-                            allowCanCrit={false}
-                            maxRows={MAX_DICE_ROWS}
-                            errorPaths={errorPaths}
-                            pathPrefix="factorsJson.attackImpact.dice"
-                        />
                     </fieldset>
                 </>
             )}
 
-            {/* Damage (both variants) */}
+            {/* Damage (both variants) — DICE FIRST, then static */}
             <fieldset className="border border-slate-700 rounded-xl p-3 space-y-3">
                 <legend className="px-2 text-sm text-slate-300">Damage</legend>
 
@@ -457,6 +458,16 @@ export default function ActionLikeForm({
                     const staticErr = errorPaths.has(`factorsJson.damage.${i}.static`);
                     return (
                         <div key={i} className="border border-slate-700 rounded-xl p-3 space-y-2">
+                            <DiceListEditor
+                                label="Damage dice"
+                                value={(line as any).dice ?? []}
+                                onChange={(v) => updateDamage(i, { dice: v.slice(0, MAX_DICE_ROWS) })}
+                                allowCanCrit={false}
+                                maxRows={MAX_DAMAGE_LINES}
+                                errorPaths={errorPaths}
+                                pathPrefix={`factorsJson.damage.${i}.dice`}
+                            />
+
                             <div className="grid grid-cols-1 md:grid-cols-3 gap-2 items-center">
                                 <DamageTypeSelect
                                     value={line.type}
@@ -490,16 +501,6 @@ export default function ActionLikeForm({
                                     onChange={(e) => updateDamage(i, { source: e.target.value })}
                                 />
                             )}
-
-                            <DiceListEditor
-                                label="Damage dice"
-                                value={(line as any).dice ?? []}
-                                onChange={(v) => updateDamage(i, { dice: v.slice(0, MAX_DICE_ROWS) })}
-                                allowCanCrit={false}
-                                maxRows={MAX_DAMAGE_LINES}
-                                errorPaths={errorPaths}
-                                pathPrefix={`factorsJson.damage.${i}.dice`}
-                            />
 
                             <div className="flex justify-end">
                                 <button type="button" onClick={() => removeDamage(i)} className="text-sm text-red-300 hover:text-red-200">Remove damage line</button>

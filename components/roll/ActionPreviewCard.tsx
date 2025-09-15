@@ -230,30 +230,25 @@ function Tag({ label, items }: { label: string; items: string[] }) {
     );
 }
 
-/** Human-friendly summary for to-hit formula (compact). */
+/** Summary for to-hit formula (dice first). */
 function summarizeToHit(toHit: any): string {
-    const parts: string[] = [];
-    const s = nWithSign(toHit?.signStatic, toHit?.static);
-    if (s) parts.push(s);
     const dice: any[] = Array.isArray(toHit?.dice) ? toHit.dice : [];
-    dice.forEach((d) => {
-        parts.push(diceWithSign(d?.signDice, d?.count, d?.size));
-    });
-    return ["1d20", ...parts].join(" ");
+    const diceParts = dice.map((d) => diceWithSign(d?.signDice, d?.count, d?.size));
+    const s = nWithSign(toHit?.signStatic, toHit?.static);
+    return joinDiceFirst(diceParts, s);
 }
 
-/** Human-friendly summary for a single damage component (compact). */
+/** Summary for a single damage component (dice first). */
 function summarizeDamage(d: any): string {
     const type = d?.type ? ` ${String(d.type)}` : "";
-    const parts: string[] = [];
-    const s = nWithSign(d?.signStatic, d?.static);
-    if (s) parts.push(s);
     const dice: any[] = Array.isArray(d?.dice) ? d.dice : [];
-    dice.forEach((x) => {
-        parts.push(diceWithSign(x?.signDice, x?.count, x?.size));
-    });
-    if (!parts.length) return `—${type.trim() || "damage"}`;
-    return `${parts.join(" ")}${type}`;
+    const diceParts = dice.map((x) => diceWithSign(x?.signDice, x?.count, x?.size));
+    const s = nWithSign(d?.signStatic, d?.static);
+
+    if (diceParts.length === 0 && !s) {
+        return `—${type.trim() || "damage"}`;
+    }
+    return `${joinDiceFirst(diceParts, s)}${type}`;
 }
 
 function nWithSign(sign: any, n: any): string | null {
@@ -268,6 +263,27 @@ function diceWithSign(sign: any, count: any, size: any): string {
     const sz = Math.max(1, Number(size ?? 20));
     const s = sign === -1 ? "-" : "+";
     return `${s}${c}d${sz}`;
+}
+
+/** Join parts with first token shown without a leading '+' (e.g., "1d20 + 6"). */
+function joinDiceFirst(diceParts: string[], staticPart: string | null): string {
+    const parts = [...diceParts];
+    if (staticPart) parts.push(staticPart);
+    return joinSigned(parts);
+}
+
+/** Convert ["+1d20","+6","-1d4"] into "1d20 + 6 - 1d4". */
+function joinSigned(parts: string[]): string {
+    if (!parts.length) return "";
+    const tokens = parts.map((p) => ({
+        sign: p.startsWith("-") ? "-" : "+",
+        value: p.replace(/^[+-]/, ""),
+    }));
+    let out = (tokens[0].sign === "-" ? "-" : "") + tokens[0].value;
+    for (let i = 1; i < tokens.length; i++) {
+        out += ` ${tokens[i].sign === "-" ? "-" : "+"} ${tokens[i].value}`;
+    }
+    return out;
 }
 
 /** Produces friendly chips like "Ranged Weapon", "Melee Spell" based on simple heuristics. */
