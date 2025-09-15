@@ -17,6 +17,7 @@
     "db:start": "powershell.exe -NoProfile -Command \"Start-Process PowerShell -Verb RunAs -ArgumentList 'Start-Service -Name \\\"postgresql-x64-17\\\"'\"",
     "db:restart": "powershell.exe -NoProfile -Command \"Start-Process PowerShell -Verb RunAs -ArgumentList 'Restart-Service -Name \\\"postgresql-x64-17\\\"'\"",
     "db:push": "dotenv -e .env.local -- prisma db push",
+    "db:migrate:status": "dotenv -e .env.local -- prisma migrate status",
     "db:migrate:dev": "dotenv -e .env.local -- prisma migrate dev",
     "db:migrate:deploy": "dotenv -e .env.local -- prisma migrate deploy",
     "db:migrate:prod": "dotenv -e .env.production -- prisma migrate deploy",

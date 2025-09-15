@@ -56,38 +56,51 @@ model VerificationToken {
 }
 
 model Character {
-  id            String         @id @default(cuid())
-  name          String
-  avatarUrl     String?
-  user          User           @relation(fields: [userId], references: [id])
-  userId        String
-  createdAt     DateTime       @default(now())
-  updatedAt     DateTime       @updatedAt
-  preferences   Json?
-  actions      Action[]
-  modifiers    ActionModifier[]
+  id          String           @id @default(cuid())
+  name        String
+  avatarUrl   String?
+  user        User             @relation(fields: [userId], references: [id])
+  userId      String
+  createdAt   DateTime         @default(now())
+  updatedAt   DateTime         @updatedAt
+  preferences Json?
+  actions     Action[]
+  modifiers   ActionModifier[]
+  RollGroup   RollGroup[]
 }
 
 model Action {
-  id           String    @id @default(cuid())
-  characterId  String
-  character    Character @relation(fields: [characterId], references: [id], onDelete: Cascade)
-  name         String    @db.VarChar(25)
-  favorite     Boolean   @default(false)
-  factorsJson  Json
-  createdAt    DateTime  @default(now())
-  updatedAt    DateTime  @updatedAt
+  id          String    @id @default(cuid())
+  characterId String
+  character   Character @relation(fields: [characterId], references: [id], onDelete: Cascade)
+  name        String    @db.VarChar(25)
+  favorite    Boolean   @default(false)
+  factorsJson Json
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+
   @@index([characterId])
 }
 
 model ActionModifier {
-  id           String    @id @default(cuid())
-  characterId  String
-  character    Character @relation(fields: [characterId], references: [id], onDelete: Cascade)
-  name         String    @db.VarChar(25)
-  favorite     Boolean   @default(false)
-  factorsJson  Json
-  createdAt    DateTime  @default(now())
-  updatedAt    DateTime  @updatedAt
+  id          String    @id @default(cuid())
+  characterId String
+  character   Character @relation(fields: [characterId], references: [id], onDelete: Cascade)
+  name        String    @db.VarChar(25)
+  favorite    Boolean   @default(false)
+  factorsJson Json
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+
   @@index([characterId])
+}
+
+model RollGroup {
+  id          String    @id @default(cuid())
+  characterId String
+  character   Character @relation(fields: [characterId], references: [id], onDelete: Cascade)
+  data        Json
+  createdAt   DateTime  @default(now())
+
+  @@index([characterId, createdAt])
 }

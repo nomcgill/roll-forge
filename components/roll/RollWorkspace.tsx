@@ -14,11 +14,9 @@ import type {
 import ReadyPane from "./ReadyPane";
 import HistoryPane from "./HistoryPane";
 import ActionLikeForm from "./ActionLikeForm";
-import {
-    executeActionGroup,
-    recomputeTotals,
-    type HistoryGroup,
-} from "@/lib/roll/engine";
+import { recomputeTotals, type HistoryGroup } from "@/lib/roll/engine";
+import { useRollApi } from "./useRollApi";
+
 
 type CharacterLike = {
     id: string;
@@ -98,8 +96,8 @@ export default function RollWorkspace(props: Props) {
     const [perActionSelected, setPerActionSelected] = useState<Set<string>>(new Set());
     const [perTurnSelected, setPerTurnSelected] = useState<Set<string>>(new Set());
 
-    // History uses the ENGINE's HistoryGroup type
-    const [history, setHistory] = useState<HistoryGroup[]>([]);
+    // History from server via useRollApi (fetch + execute persists to DB)
+    const { history, setHistory, execute } = useRollApi(characterId);
 
     // url helper
     const pushMode = useCallback(
@@ -148,21 +146,15 @@ export default function RollWorkspace(props: Props) {
         setTallies({});
     }
 
-    function onRoll() {
+    async function onRoll() {
         if (!hasAnyTallies) return;
 
-        const group = executeActionGroup({
-            actions,
-            modifiers,
-            preferences: prefs,
-            selection: {
-                actionTallies: tallies,
-                perActionModifierIds: Array.from(perActionSelected),
-                perTurnModifierIds: Array.from(perTurnSelected),
-            },
+        const group = await execute({
+            actionTallies: tallies,
+            perActionModifierIds: Array.from(perActionSelected),
+            perTurnModifierIds: Array.from(perTurnSelected),
         });
 
-        setHistory((h) => [group, ...h]);
         resetTallies();
 
         if (window.matchMedia("(max-width: 1023px)").matches) {
