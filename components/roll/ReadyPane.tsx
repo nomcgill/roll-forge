@@ -133,7 +133,7 @@ export default function ReadyPane({
                                     type="button"
                                     onClick={() => toggleAction(a.id)}
                                     aria-pressed={on}
-                                    className={`relative inline-flex items-center justify-center rounded-md border px-3 py-2 text-sm transition focus:outline-none focus:ring-2 focus:ring-offset-2 min-h-11 min-w-11 ${on ? "ring-2 ring-indigo-500 bg-indigo-50 text-indigo-900" : "bg-white"
+                                    className={`relative inline-flex items-center justify-center rounded-md border px-3 py-2 text-sm transition focus:outline-none focus:ring-2 focus:ring-offset-2 min-w-11 ${on ? "ring-2 ring-indigo-500 bg-indigo-50 text-indigo-900" : "bg-white"
                                         }`}
                                     title={on ? "Active" : "Inactive"}
                                 >

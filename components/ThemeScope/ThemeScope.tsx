@@ -7,11 +7,11 @@ type Props = {
     theme?: ThemeName;
     className?: string;
     children: React.ReactNode;
-};
+} & React.HTMLAttributes<HTMLDivElement>;
 
-export default function ThemeScope({ theme, className, children }: Props) {
+export default function ThemeScope({ theme, className, children, ...rest }: Props) {
     return (
-        <div data-theme={theme} className={className}>
+        <div data-theme={theme} className={className} {...rest}>
             {children}
         </div>
     );
