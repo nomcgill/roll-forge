@@ -5,6 +5,11 @@ import { NextResponse } from "next/server";
 import { getServerSession } from "next-auth";
 import { authOptions } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
+import { Prisma } from "@prisma/client";
+
+// Change this whenever I want to try a different palette:
+// 'ember' | 'azure' | 'verdant' | 'amethyst'
+const DEV_THEME = "amethyst" as const;
 
 export async function POST() {
   // Hide this endpoint in production
@@ -28,6 +33,7 @@ export async function POST() {
       data: {
         name: "Aria the Bold",
         userId,
+        preferences: { theme: DEV_THEME } as Prisma.InputJsonValue,
         avatarUrl: "https://img-9gag-fun.9cache.com/photo/a5Kp48E_460s.jpg",
       },
       select: { id: true, name: true },
