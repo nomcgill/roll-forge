@@ -168,7 +168,7 @@ export default function RollWorkspace(props: Props) {
 
     // HistoryPane (optional) callback: keep totals in sync when user toggles a row
     const onToggleRow = (groupId: string, rowId: string, next: boolean) => {
-        setHistory((groups) =>
+        setHistory((groups: HistoryGroup[]) =>
             groups.map((g) => {
                 if (g.id !== groupId) return g;
                 const rows = g.rows.map((r) =>
@@ -256,7 +256,7 @@ export default function RollWorkspace(props: Props) {
                                     type="button"
                                     disabled={!hasAnyTallies}
                                     onClick={onRoll}
-                                    className={`mx-auto block w-full md:w-2/3 lg:w-3/4 xl:w-2/3 rounded-2xl px-4 py-3 font-bold
+                                    className={`btn mx-auto block w-full md:w-2/3 lg:w-3/4 xl:w-2/3 rounded-2xl px-4 py-3 font-bold
                   ${hasAnyTallies
                                             ? "bg-slate-200 text-slate-900 hover:bg-white"
                                             : "bg-slate-700 text-slate-400 cursor-not-allowed"

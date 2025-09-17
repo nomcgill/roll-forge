@@ -40,7 +40,7 @@ export default function ActionPreviewCard({
     const chips = friendlyConditions(conditions);
 
     return (
-        <div className="w-full max-w-full rounded-md border border-neutral-700 bg-neutral-900 text-neutral-100 p-3 sm:p-4">
+        <div className="card w-full max-w-full rounded-md border border-neutral-700 bg-neutral-900 text-neutral-100 p-3 sm:p-4">
             <div className="flex items-stretch justify-between gap-4">
                 {/* LEFT: Name → Conditions → Hit → Damage */}
                 <div className="min-w-0 flex-1 space-y-2">
@@ -196,7 +196,7 @@ function TallyButton({
             onTouchStart={disabled ? undefined : onTouchStart}
             onTouchEnd={disabled ? undefined : onTouchEnd}
             onTouchCancel={clearTimer}
-            className={`${wrap} ${bg} ${disabled ? "pointer-events-none" : ""}`}
+            className={`btn btn-secondary ${wrap} ${bg} ${disabled ? "pointer-events-none" : ""}`}
             aria-pressed={active}
             aria-disabled={disabled}
         >

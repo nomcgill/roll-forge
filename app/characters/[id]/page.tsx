@@ -12,6 +12,10 @@ import type { ReactElement } from "react";
 
 import CharacterDetails from "@/components/CharacterDetails";
 import RollWorkspace from "@/components/roll/RollWorkspace";
+import ThemeScope from '@/components/ThemeScope/ThemeScope';
+import { readThemeFromPreferences, type ThemeName } from '@/lib/validation/theme';
+import CharacterThemePicker from "@/components/CharacterThemePicker";
+
 
 import {
     actionCreateSchema,
@@ -47,6 +51,9 @@ export default async function CharacterPage({ params }: CharacterPageProps): Pro
     if (!character) {
         notFound();
     }
+
+    const theme: ThemeName = readThemeFromPreferences(character?.preferences);
+    console.log(character)
 
     // Read from Prisma
     const [actionsRaw, modifiersRaw] = await Promise.all([
@@ -88,14 +95,17 @@ export default async function CharacterPage({ params }: CharacterPageProps): Pro
     }));
 
     return (
-        <main className="px-4 py-4 md:px-6 lg:px-8 space-y-6">
-            <CharacterDetails character={character} />
-            <RollWorkspace
-                characterId={id}
-                preferences={character.preferences as any}
-                initialActions={actions}
-                initialModifiers={modifiers}
-            />
-        </main>
+        <ThemeScope theme={theme} id="theme-scope" className="min-h-screen bg-surface">
+            <main className="px-4 py-4 md:px-6 lg:px-8 space-y-6">
+                <CharacterDetails character={character} />
+                <CharacterThemePicker characterId={id} currentTheme={theme} scopeId="theme-scope" />
+                <RollWorkspace
+                    characterId={id}
+                    preferences={character.preferences as any}
+                    initialActions={actions}
+                    initialModifiers={modifiers}
+                />
+            </main>
+        </ThemeScope>
     );
 }

@@ -1,34 +1,174 @@
 /* app/globals.css */
+
+/* Tailwind base + existing imports stay as-is */
 @import "tailwindcss";
 
-:root {
-  --background: #ffffff;
-  --foreground: #171717;
-
-  --color-background: var(--background);
-  --color-foreground: var(--foreground);
-  --font-sans: var(--font-geist-sans);
-  --font-mono: var(--font-geist-mono);
-  /* BRANDING */
-  --brand-primary: #ff6a00; /* outline & digits */
-  --die-base: #1a1a1a; /* body of the die (dark) */
-}
-
-@media (prefers-color-scheme: dark) {
+/* =========
+   Token layer
+   ========= */
+@layer base {
   :root {
-    --background: #0a0a0a;
-    --foreground: #ededed;
+    /* Base HSL triplets keep things consistent with Tailwind/shadcn patterns */
+    /* dark-ish slate baseline */
+    --background: 222 15% 10%;
+    --foreground: 210 40% 98%;
+    --card: 222 15% 14%;
+    --card-foreground: 210 40% 98%;
+    --muted: 222 15% 16%;
+    --muted-foreground: 215 20% 80%;
+    --border: 222 15% 22%;
+    --input: 222 15% 22%;
 
-    --color-background: var(--background);
-    --color-foreground: var(--foreground);
-    /* DARK THEME BRANDING */
-    --brand-primary: #ff6a00;
-    --die-base: #111214;
+    --ring: 222 84% 56%;
+
+    --primary: 222 84% 56%;
+    --primary-foreground: 210 40% 98%;
+
+    --accent: 222 84% 56%;
+    --accent-foreground: 210 40% 98%;
+  }
+
+  /* Palette: Ember (warm red/orange) */
+  [data-theme="ember"] {
+    --background: 18 33% 10%;
+    --foreground: 18 60% 14%;
+
+    --card: 18 33% 99%;
+    --card-foreground: 18 60% 14%;
+
+    --muted: 18 30% 94%;
+    --muted-foreground: 18 17% 38%;
+
+    --border: 18 30% 88%;
+    --input: 18 30% 88%;
+    --ring: 10 90% 55%;
+
+    --primary: 10 90% 55%;
+    --primary-foreground: 18 33% 99%;
+
+    --accent: 25 90% 52%;
+    --accent-foreground: 18 33% 99%;
+  }
+
+  /* Palette: Azure (cool blue) */
+  [data-theme="azure"] {
+    --background: 210 40% 10%;
+    --foreground: 222 47% 11%;
+
+    --card: 210 40% 99%;
+    --card-foreground: 222 47% 11%;
+
+    --muted: 210 40% 96%;
+    --muted-foreground: 215 20% 36%;
+
+    --border: 214 32% 90%;
+    --input: 214 32% 90%;
+    --ring: 215 90% 55%;
+
+    --primary: 215 90% 55%;
+    --primary-foreground: 210 40% 98%;
+
+    --accent: 200 90% 50%;
+    --accent-foreground: 210 40% 98%;
+  }
+
+  /* Palette: Verdant (green) */
+  [data-theme="verdant"] {
+    --background: 140 28% 10%;
+    --foreground: 150 30% 12%;
+
+    --card: 140 28% 99%;
+    --card-foreground: 150 30% 12%;
+
+    --muted: 145 24% 94%;
+    --muted-foreground: 150 12% 35%;
+
+    --border: 145 18% 88%;
+    --input: 145 18% 88%;
+    --ring: 150 65% 45%;
+
+    --primary: 150 65% 45%;
+    --primary-foreground: 140 28% 99%;
+
+    --accent: 160 72% 40%;
+    --accent-foreground: 140 28% 99%;
+  }
+
+  /* Palette: Amethyst (purple) */
+  [data-theme="amethyst"] {
+    --background: 270 33% 10%;
+    --foreground: 270 50% 12%;
+
+    --card: 270 33% 99%;
+    --card-foreground: 270 50% 12%;
+
+    --muted: 270 24% 94%;
+    --muted-foreground: 270 14% 40%;
+
+    --border: 270 18% 88%;
+    --input: 270 18% 88%;
+    --ring: 270 80% 55%;
+
+    --primary: 270 80% 55%;
+    --primary-foreground: 270 33% 99%;
+
+    --accent: 286 78% 57%;
+    --accent-foreground: 270 33% 99%;
+  }
+
+  /* Default (used when no data-theme present) */
+  html,
+  body {
+    background-color: hsl(var(--background));
+    color: hsl(var(--foreground));
   }
 }
 
-body {
-  background: var(--background);
-  color: var(--foreground);
-  font-family: var(--font-sans), Arial, Helvetica, sans-serif;
+/* =========
+   Token utilities (no Tailwind config change)
+   ========= */
+@layer components {
+  .bg-surface {
+    background-color: hsl(var(--background));
+  }
+  .text-foreground {
+    color: hsl(var(--foreground));
+  }
+
+  .card {
+    background-color: hsl(var(--card));
+    color: hsl(var(--card-foreground));
+    border: 1px solid hsl(var(--border));
+    border-radius: 0.75rem; /* rounded-2xl vibe */
+    box-shadow: 0 2px 8px hsl(var(--foreground) / 0.06);
+  }
+
+  .muted {
+    color: hsl(var(--muted-foreground));
+  }
+  .bg-muted {
+    background-color: hsl(var(--muted));
+  }
+
+  .btn {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.5rem;
+    padding: 0.5rem 0.9rem;
+    border-radius: 0.75rem;
+    font-weight: 600;
+    border: 1px solid hsl(var(--border));
+    background-color: hsl(var(--primary));
+    color: hsl(var(--primary-foreground));
+  }
+  .btn-secondary {
+    background-color: hsl(var(--accent));
+    color: hsl(var(--accent-foreground));
+  }
+  .ring-brand {
+    box-shadow: 0 0 0 2px hsl(var(--ring) / 0.35);
+  }
+  .border-token {
+    border-color: hsl(var(--border));
+  }
 }
