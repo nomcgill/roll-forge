@@ -1,12 +1,6 @@
 import { render, screen } from "@testing-library/react";
 import CharacterDetails from "./CharacterDetails";
 
-// Mock the dropdown to keep this test focused on the header + avatar
-jest.mock("./EditCharacterDropdown", () => ({
-    __esModule: true,
-    default: () => <button type="button">Edit Character</button>,
-}));
-
 describe("CharacterDetails (a11y-friendly)", () => {
     it("renders the character name and avatar image when present", () => {
         render(

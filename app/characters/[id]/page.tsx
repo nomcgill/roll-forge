@@ -14,8 +14,7 @@ import CharacterDetails from "@/components/CharacterDetails";
 import RollWorkspace from "@/components/roll/RollWorkspace";
 import ThemeScope from '@/components/ThemeScope/ThemeScope';
 import { readThemeFromPreferences, type ThemeName } from '@/lib/validation/theme';
-import CharacterThemePicker from "@/components/CharacterThemePicker";
-
+import CharacterSettingsBlock from '@/components/CharacterDetails/CharacterSettingsBlock';
 
 import {
     actionCreateSchema,
@@ -98,7 +97,12 @@ export default async function CharacterPage({ params }: CharacterPageProps): Pro
         <ThemeScope theme={theme} id="theme-scope" className="min-h-screen bg-surface">
             <main className="px-4 py-4 md:px-6 lg:px-8 space-y-6">
                 <CharacterDetails character={character} />
-                <CharacterThemePicker characterId={id} currentTheme={theme} scopeId="theme-scope" />
+                <CharacterSettingsBlock
+                    characterId={character.id}
+                    initialName={character.name}
+                    initialAvatarUrl={character.avatarUrl}
+                    initialPreferences={character.preferences ?? null}
+                />
                 <RollWorkspace
                     characterId={id}
                     preferences={character.preferences as any}

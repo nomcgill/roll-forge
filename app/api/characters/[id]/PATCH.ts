@@ -1,3 +1,4 @@
+// app/api/characters/[id]/PATCH.ts
 export const dynamic = "force-dynamic";
 export const runtime = "nodejs";
 
@@ -17,20 +18,20 @@ const JsonValue: z.ZodType<Json> = z.lazy(() =>
     z.boolean(),
     z.null(),
     z.array(JsonValue),
-    z.record(z.string(), JsonValue), // key + value schemas
+    z.record(z.string(), JsonValue),
   ])
 );
 
 const CharacterUpdateSchema = z
   .object({
-    name: z.string().min(1, "Name is required").optional(),
-    // "" -> null; valid URL stays string; undefined = "do not change"
+    name: z.string().min(1).optional(),
     avatarUrl: z
       .preprocess(
         (v) => (v === "" ? null : v),
-        z.union([z.string().url("Invalid URL"), z.null()])
+        z.union([z.string().url(), z.null()])
       )
       .optional(),
+    // We accept partial preferences and MERGE on the server.
     preferences: z.union([JsonValue, z.null()]).optional(),
   })
   .refine((data) => Object.keys(data).length > 0, {
@@ -68,12 +69,12 @@ export async function PATCH(
     );
   }
 
-  // Ownership check
-  const exists = await prisma.character.findFirst({
+  // Ensure character belongs to user + get existing preferences for merge
+  const existing = await prisma.character.findFirst({
     where: { id: params.id, userId },
-    select: { id: true },
+    select: { id: true, preferences: true },
   });
-  if (!exists) {
+  if (!existing) {
     return NextResponse.json(
       { error: "Not found" },
       { status: 404, headers: { "Cache-Control": "no-store" } }
@@ -82,9 +83,16 @@ export async function PATCH(
 
   const data = parsed.data;
   const updateData: Record<string, unknown> = {};
+
   if ("name" in data) updateData.name = data.name;
-  if ("avatarUrl" in data) updateData.avatarUrl = data.avatarUrl; // string | null
-  if ("preferences" in data) updateData.preferences = data.preferences; // Json | null
+  if ("avatarUrl" in data) updateData.avatarUrl = data.avatarUrl;
+
+  if ("preferences" in data) {
+    // Shallow merge (object spread) to avoid clobbering unrelated keys like 'theme'
+    const prev = (existing.preferences ?? {}) as Record<string, Json>;
+    const next = (data.preferences ?? {}) as Record<string, Json>;
+    updateData.preferences = { ...prev, ...next };
+  }
 
   const updated = await prisma.character.update({
     where: { id: params.id },
@@ -98,11 +106,8 @@ export async function PATCH(
     },
   });
 
-  return new NextResponse(JSON.stringify(updated), {
+  return NextResponse.json(updated, {
     status: 200,
-    headers: {
-      "Content-Type": "application/json",
-      "Cache-Control": "no-store",
-    },
+    headers: { "Cache-Control": "no-store" },
   });
 }
