@@ -1,3 +1,4 @@
+// components/roll/RollWorkspace.tsx
 "use client";
 
 import { useMemo, useState, useCallback } from "react";
@@ -16,7 +17,6 @@ import HistoryPane from "./HistoryPane";
 import ActionLikeForm from "./ActionLikeForm";
 import { recomputeTotals, type HistoryGroup } from "@/lib/roll/engine";
 import { useRollApi } from "./useRollApi";
-
 
 type CharacterLike = {
     id: string;
@@ -44,7 +44,11 @@ type Props =
 
 function hasCharacter(
     p: Props
-): p is { character: CharacterLike; initialActions?: ActionRecord[]; initialModifiers?: ModifierRecord[] } {
+): p is {
+    character: CharacterLike;
+    initialActions?: ActionRecord[];
+    initialModifiers?: ModifierRecord[];
+} {
     return (p as any).character != null;
 }
 
@@ -60,7 +64,15 @@ function normalizePreferences(p?: CharacterPreferences): CharacterPreferences {
 
 function getParamMode(sp: URLSearchParams) {
     const m = sp.get("mode");
-    if (m === "new-action" || m === "new-modifier" || m === "history" || m === "ready") return m;
+    if (
+        m === "new-action" ||
+        m === "new-modifier" ||
+        m === "edit-action" ||
+        m === "edit-modifier" ||
+        m === "history" ||
+        m === "ready"
+    )
+        return m;
     return "ready";
 }
 
@@ -70,7 +82,11 @@ export default function RollWorkspace(props: Props) {
     const mode = getParamMode(sp);
 
     // normalized inputs
-    const characterId: string = hasCharacter(props) ? props.character.id : props.characterId;
+    const characterId: string = hasCharacter(props)
+        ? props.character.id
+        : (props.characterId as string);
+
+    // ensure prefs is declared and used (ESLint: no-unused-vars)
     const prefs = normalizePreferences(
         hasCharacter(props) ? props.character.preferences : props.preferences
     );
@@ -93,15 +109,33 @@ export default function RollWorkspace(props: Props) {
         [tallies]
     );
 
-    const [perActionSelected, setPerActionSelected] = useState<Set<string>>(new Set());
-    const [perTurnSelected, setPerTurnSelected] = useState<Set<string>>(new Set());
+    const [perActionSelected, setPerActionSelected] = useState<Set<string>>(
+        new Set()
+    );
+    const [perTurnSelected, setPerTurnSelected] = useState<Set<string>>(
+        new Set()
+    );
+
+    // NEW: edit state
+    const [editingActionId, setEditingActionId] = useState<string | null>(null);
+    const [editingModifierId, setEditingModifierId] = useState<string | null>(
+        null
+    );
 
     // History from server via useRollApi (fetch + execute persists to DB)
     const { history, setHistory, execute } = useRollApi(characterId);
 
     // url helper
     const pushMode = useCallback(
-        (m: "ready" | "history" | "new-action" | "new-modifier") => {
+        (
+            m:
+                | "ready"
+                | "history"
+                | "new-action"
+                | "new-modifier"
+                | "edit-action"
+                | "edit-modifier"
+        ) => {
             const url = new URL(window.location.href);
             url.searchParams.set("mode", m);
             router.push(`${url.pathname}?${url.searchParams.toString()}`);
@@ -160,7 +194,9 @@ export default function RollWorkspace(props: Props) {
         if (window.matchMedia("(max-width: 1023px)").matches) {
             pushMode("history");
             setTimeout(() => {
-                const el = document.querySelector(`[data-group-id="${group.id}"]`);
+                const el = document.querySelector(
+                    `[data-group-id="${group.id}"]`
+                ) as HTMLElement | null;
                 if (el) el.scrollIntoView({ behavior: "smooth", block: "start" });
             }, 50);
         }
@@ -180,15 +216,93 @@ export default function RollWorkspace(props: Props) {
     };
 
     const scrollToPane = (which: "ready" | "history") => {
-        const scroller = document.querySelector('[data-scroll="panes"]') as HTMLElement | null;
-        const pane = document.querySelector(which === "history" ? '[data-pane="history"]' : '[data-pane="ready"]') as HTMLElement | null;
+        const scroller = document.querySelector(
+            '[data-scroll="panes"]'
+        ) as HTMLElement | null;
+        const pane = document.querySelector(
+            which === "history"
+                ? '[data-pane="history"]'
+                : '[data-pane="ready"]'
+        ) as HTMLElement | null;
         if (scroller && pane) {
             scroller.scrollTo({ left: pane.offsetLeft, behavior: "smooth" });
         }
     };
 
-    const onCancelForm = () => pushMode("ready");
-    const onSavedForm = () => pushMode("ready");
+    // NEW: management hooks for ReadyPane
+    const onEditAction = (id: string) => {
+        setEditingActionId(id);
+        pushMode("edit-action");
+    };
+    const onEditModifier = (id: string) => {
+        setEditingModifierId(id);
+        pushMode("edit-modifier");
+    };
+
+    const onDeleteAction = async (id: string) => {
+        if (typeof window !== "undefined" && !window.confirm("Delete this action?"))
+            return;
+        try {
+            const res = await fetch(`/api/actions/${id}`, { method: "DELETE" });
+            if (!res.ok) {
+                console.error("Delete action failed", await res.text());
+                return;
+            }
+            // drop any tallies we were tracking for this action id
+            setTallies((t) => {
+                const nx = { ...t };
+                delete nx[id];
+                return nx;
+            });
+            router.refresh?.();
+        } catch (e) {
+            console.error("Delete action crashed", e);
+        }
+    };
+
+    const onDeleteModifier = async (id: string) => {
+        if (
+            typeof window !== "undefined" &&
+            !window.confirm("Delete this modifier?")
+        )
+            return;
+        try {
+            const res = await fetch(`/api/action-modifiers/${id}`, {
+                method: "DELETE",
+            });
+            if (!res.ok) {
+                console.error("Delete modifier failed", await res.text());
+                return;
+            }
+            // remove from both selection sets if present
+            setPerActionSelected((s) => {
+                const nx = new Set(s);
+                nx.delete(id);
+                return nx;
+            });
+            setPerTurnSelected((s) => {
+                const nx = new Set(s);
+                nx.delete(id);
+                return nx;
+            });
+            router.refresh?.();
+        } catch (e) {
+            console.error("Delete modifier crashed", e);
+        }
+    };
+
+    const onCancelForm = () => {
+        setEditingActionId(null);
+        setEditingModifierId(null);
+        pushMode("ready");
+    };
+
+    const onSavedForm = () => {
+        setEditingActionId(null);
+        setEditingModifierId(null);
+        router.refresh?.();
+        pushMode("ready");
+    };
 
     return (
         <div
@@ -196,9 +310,11 @@ export default function RollWorkspace(props: Props) {
             className="overflow-x-auto snap-x snap-mandatory overscroll-x-contain scroll-smooth lg:overflow-visible"
         >
             <div className="flex flex-nowrap gap-0 lg:grid lg:grid-cols-2 lg:gap-4">
-
                 {/* LEFT / READY */}
-                <div data-pane="ready" className="min-w-full basis-full snap-start snap-always lg:min-w-0">
+                <div
+                    data-pane="ready"
+                    className="min-w-full basis-full snap-start snap-always lg:min-w-0"
+                >
                     <header className="mb-2 flex items-center justify-between gap-3">
                         <h2 className="text-xl font-bold">Ready an Action</h2>
 
@@ -238,6 +354,28 @@ export default function RollWorkspace(props: Props) {
                             onCancel={onCancelForm}
                             onSaved={onSavedForm}
                         />
+                    ) : mode === "edit-action" ? (
+                        <ActionLikeForm
+                            variant="action"
+                            characterId={characterId}
+                            preferences={prefs}
+                            initialAction={
+                                actions.find((a) => a.id === editingActionId) ?? null
+                            }
+                            onCancel={onCancelForm}
+                            onSaved={onSavedForm}
+                        />
+                    ) : mode === "edit-modifier" ? (
+                        <ActionLikeForm
+                            variant="modifier"
+                            characterId={characterId}
+                            preferences={prefs}
+                            initialModifier={
+                                modifiers.find((m) => m.id === editingModifierId) ?? null
+                            }
+                            onCancel={onCancelForm}
+                            onSaved={onSavedForm}
+                        />
                     ) : (
                         <>
                             <ReadyPane
@@ -248,6 +386,11 @@ export default function RollWorkspace(props: Props) {
                                 selectedPerActionModifierIds={perActionSelected}
                                 selectedPerTurnModifierIds={perTurnSelected}
                                 onToggleModifier={onToggleModifier}
+                                // NEW: wire up management hooks
+                                onEditAction={onEditAction}
+                                onDeleteAction={onDeleteAction}
+                                onEditModifier={onEditModifier}
+                                onDeleteModifier={onDeleteModifier}
                                 preferences={prefs}
                             />
 
@@ -270,7 +413,10 @@ export default function RollWorkspace(props: Props) {
                 </div>
 
                 {/* RIGHT / HISTORY */}
-                <div data-pane="history" className="min-w-full basis-full snap-start snap-always lg:min-w-0">
+                <div
+                    data-pane="history"
+                    className="min-w-full basis-full snap-start snap-always lg:min-w-0"
+                >
                     <header className="mb-2 flex items-center justify-between">
                         <h2 className="text-xl font-bold lg:block hidden">Roll History</h2>
                         {history.length > 0 && (
@@ -289,7 +435,6 @@ export default function RollWorkspace(props: Props) {
                         >
                             ← Back to Ready
                         </button>
-
                     </header>
 
                     <HistoryPane history={history} onToggleRow={onToggleRow} />
