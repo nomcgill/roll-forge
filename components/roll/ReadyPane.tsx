@@ -19,6 +19,11 @@ type Props = {
     selectedPerActionModifierIds: Set<string>;
     selectedPerTurnModifierIds: Set<string>;
     onToggleModifier: (modifierId: string, isPerAction: boolean) => void;
+    /** Optional management hooks (UI shows only when provided) */
+    onEditAction?: (actionId: string) => void;
+    onDeleteAction?: (actionId: string) => void;
+    onEditModifier?: (modifierId: string) => void;
+    onDeleteModifier?: (modifierId: string) => void;
     preferences?: CharacterPreferences;
 };
 
@@ -37,6 +42,10 @@ export default function ReadyPane({
     selectedPerActionModifierIds,
     selectedPerTurnModifierIds,
     onToggleModifier,
+    onEditAction,
+    onDeleteAction,
+    onEditModifier,
+    onDeleteModifier,
     preferences,
 }: Props) {
     const prefs = preferences ?? DEFAULT_PREFS;
@@ -52,7 +61,9 @@ export default function ReadyPane({
     );
 
     // Local selection for "active" actions (drives Section 3 previews)
-    const [selectedActionIds, setSelectedActionIds] = React.useState<Set<string>>(new Set());
+    const [selectedActionIds, setSelectedActionIds] = React.useState<Set<string>>(
+        new Set()
+    );
 
     // Initialize selection:
     // 1) any action with non-zero tallies
@@ -128,20 +139,57 @@ export default function ReadyPane({
                         {actions.map((a) => {
                             const on = selectedActionIds.has(a.id);
                             return (
-                                <button
+                                <div
                                     key={a.id}
-                                    type="button"
-                                    onClick={() => toggleAction(a.id)}
-                                    aria-pressed={on}
-                                    className={`relative inline-flex items-center justify-center rounded-md border px-3 py-2 text-sm transition focus:outline-none focus:ring-2 focus:ring-offset-2 min-w-11 ${on ? "ring-2 ring-indigo-500 bg-indigo-50 text-indigo-900" : "bg-white"
-                                        }`}
-                                    title={on ? "Active" : "Inactive"}
+                                    className="relative inline-flex items-center gap-1"
                                 >
-                                    <span className="mr-1" aria-hidden>
-                                        {a.favorite ? "★" : "☆"}
-                                    </span>
-                                    <span className="truncate max-w-[12rem]">{a.name}</span>
-                                </button>
+                                    <button
+                                        type="button"
+                                        onClick={() => toggleAction(a.id)}
+                                        aria-pressed={on}
+                                        className={`relative inline-flex items-center justify-center rounded-md border px-3 py-2 text-sm transition focus:outline-none focus:ring-2 focus:ring-offset-2 min-w-11 ${on
+                                                ? "ring-2 ring-indigo-500 bg-indigo-50 text-indigo-900"
+                                                : "bg-white"
+                                            }`}
+                                        title={on ? "Active" : "Inactive"}
+                                    >
+                                        <span className="mr-1" aria-hidden>
+                                            {a.favorite ? "★" : "☆"}
+                                        </span>
+                                        <span className="truncate max-w-[12rem]">{a.name}</span>
+                                    </button>
+
+                                    {(onEditAction || onDeleteAction) && (
+                                        <span className="flex items-center gap-1 -ml-1">
+                                            {onEditAction && (
+                                                <button
+                                                    type="button"
+                                                    aria-label={`Edit: ${a.name}`}
+                                                    onClick={(e) => {
+                                                        e.stopPropagation();
+                                                        onEditAction(a.id);
+                                                    }}
+                                                    className="text-xs px-1 py-0.5 rounded border border-slate-600 hover:bg-slate-800"
+                                                >
+                                                    ✎
+                                                </button>
+                                            )}
+                                            {onDeleteAction && (
+                                                <button
+                                                    type="button"
+                                                    aria-label={`Delete: ${a.name}`}
+                                                    onClick={(e) => {
+                                                        e.stopPropagation();
+                                                        onDeleteAction(a.id);
+                                                    }}
+                                                    className="text-xs px-1 py-0.5 rounded border border-slate-600 hover:bg-slate-800"
+                                                >
+                                                    🗑
+                                                </button>
+                                            )}
+                                        </span>
+                                    )}
+                                </div>
                             );
                         })}
                     </div>
@@ -161,26 +209,57 @@ export default function ReadyPane({
                             const checked = selectedPerActionModifierIds.has(m.id);
                             const incompatible = isIncompatible(m);
                             return (
-                                <label
+                                <div
                                     key={m.id}
-                                    className="flex items-center gap-2 text-sm cursor-pointer"
-                                    title={incompatible ? "Incompatible with current selections" : ""}
+                                    className="flex items-center justify-between gap-2"
                                 >
-                                    <input
-                                        type="checkbox"
-                                        checked={checked}
-                                        onChange={() => onToggleModifier(m.id, true)}
-                                        className="accent-slate-200"
-                                    />
-                                    <span>
-                                        {m.name}
-                                        {incompatible && (
-                                            <span className="ml-2 rounded bg-rose-300 text-rose-900 px-1 py-[1px] text-[10px] font-bold">
-                                                incompatible
-                                            </span>
-                                        )}
-                                    </span>
-                                </label>
+                                    <label
+                                        className="flex items-center gap-2 text-sm cursor-pointer flex-1"
+                                        title={
+                                            incompatible ? "Incompatible with current selections" : ""
+                                        }
+                                    >
+                                        <input
+                                            type="checkbox"
+                                            checked={checked}
+                                            onChange={() => onToggleModifier(m.id, true)}
+                                            className="accent-slate-200"
+                                        />
+                                        <span>
+                                            {m.name}
+                                            {incompatible && (
+                                                <span className="ml-2 rounded bg-rose-300 text-rose-900 px-1 py-[1px] text-[10px] font-bold">
+                                                    incompatible
+                                                </span>
+                                            )}
+                                        </span>
+                                    </label>
+
+                                    {(onEditModifier || onDeleteModifier) && (
+                                        <span className="flex items-center gap-1">
+                                            {onEditModifier && (
+                                                <button
+                                                    type="button"
+                                                    aria-label={`Edit: ${m.name}`}
+                                                    onClick={() => onEditModifier(m.id)}
+                                                    className="text-xs px-1 py-0.5 rounded border border-slate-600 hover:bg-slate-800"
+                                                >
+                                                    ✎
+                                                </button>
+                                            )}
+                                            {onDeleteModifier && (
+                                                <button
+                                                    type="button"
+                                                    aria-label={`Delete: ${m.name}`}
+                                                    onClick={() => onDeleteModifier(m.id)}
+                                                    className="text-xs px-1 py-0.5 rounded border border-slate-600 hover:bg-slate-800"
+                                                >
+                                                    🗑
+                                                </button>
+                                            )}
+                                        </span>
+                                    )}
+                                </div>
                             );
                         })}
                     </div>
@@ -197,26 +276,57 @@ export default function ReadyPane({
                             const checked = selectedPerTurnModifierIds.has(m.id);
                             const incompatible = isIncompatible(m);
                             return (
-                                <label
+                                <div
                                     key={m.id}
-                                    className="flex items-center gap-2 text-sm cursor-pointer"
-                                    title={incompatible ? "Incompatible with current selections" : ""}
+                                    className="flex items-center justify-between gap-2"
                                 >
-                                    <input
-                                        type="checkbox"
-                                        checked={checked}
-                                        onChange={() => onToggleModifier(m.id, false)}
-                                        className="accent-slate-200"
-                                    />
-                                    <span>
-                                        {m.name}
-                                        {incompatible && (
-                                            <span className="ml-2 rounded bg-rose-300 text-rose-900 px-1 py-[1px] text-[10px] font-bold">
-                                                incompatible
-                                            </span>
-                                        )}
-                                    </span>
-                                </label>
+                                    <label
+                                        className="flex items-center gap-2 text-sm cursor-pointer flex-1"
+                                        title={
+                                            incompatible ? "Incompatible with current selections" : ""
+                                        }
+                                    >
+                                        <input
+                                            type="checkbox"
+                                            checked={checked}
+                                            onChange={() => onToggleModifier(m.id, false)}
+                                            className="accent-slate-200"
+                                        />
+                                        <span>
+                                            {m.name}
+                                            {incompatible && (
+                                                <span className="ml-2 rounded bg-rose-300 text-rose-900 px-1 py-[1px] text-[10px] font-bold">
+                                                    incompatible
+                                                </span>
+                                            )}
+                                        </span>
+                                    </label>
+
+                                    {(onEditModifier || onDeleteModifier) && (
+                                        <span className="flex items-center gap-1">
+                                            {onEditModifier && (
+                                                <button
+                                                    type="button"
+                                                    aria-label={`Edit: ${m.name}`}
+                                                    onClick={() => onEditModifier(m.id)}
+                                                    className="text-xs px-1 py-0.5 rounded border border-slate-600 hover:bg-slate-800"
+                                                >
+                                                    ✎
+                                                </button>
+                                            )}
+                                            {onDeleteModifier && (
+                                                <button
+                                                    type="button"
+                                                    aria-label={`Delete: ${m.name}`}
+                                                    onClick={() => onDeleteModifier(m.id)}
+                                                    className="text-xs px-1 py-0.5 rounded border border-slate-600 hover:bg-slate-800"
+                                                >
+                                                    🗑
+                                                </button>
+                                            )}
+                                        </span>
+                                    )}
+                                </div>
                             );
                         })}
                     </div>
@@ -236,7 +346,11 @@ export default function ReadyPane({
                                 <div key={a.id} className="w-full max-w-full">
                                     <ActionPreviewCard
                                         action={a}
-                                        counts={{ normal: t.normal ?? 0, adv: t.adv ?? 0, disadv: t.disadv ?? 0 }}
+                                        counts={{
+                                            normal: t.normal ?? 0,
+                                            adv: t.adv ?? 0,
+                                            disadv: t.disadv ?? 0,
+                                        }}
                                         perActionModifiers={activePerActionModifiers}
                                         perTurnModifiers={activePerTurnModifiers}
                                         onInc={(kind) => inc(a.id, kind)}
