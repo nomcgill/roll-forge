@@ -1,35 +1,26 @@
 // components/CharacterDetails/CharacterSettingsBlock.tsx
 "use client";
 
+import { useRouter } from "next/navigation";
 import { useEffect, useMemo, useRef, useState } from "react";
 import type { CharacterPreferences } from "@/components/roll/types";
-import CharacterThemePicker from "@/components/CharacterThemePicker"; // uses same API as on the page
+import CharacterThemePicker from "@/components/CharacterThemePicker";
 import { readThemeFromPreferences, type ThemeName } from "@/lib/validation/theme";
 
-/**
- * Minimal character settings editor for v1:
- * - name
- * - avatarUrl (with debounced image probe validation to avoid CORS noise)
- * - preferences: advRules, critRules ("5e-double" only in v1), critThreshold (1..20)
- * - theme: shown inline via CharacterThemePicker (submits via its own endpoint)
- *
- * NOTE: We intentionally DO NOT surface "unique damage types" in v1.
- */
 
 type Props = {
     characterId: string;
     initialName: string;
     initialAvatarUrl?: string | null;
-    initialPreferences?: unknown | null; // Prisma JSON -> unknown on the client
+    initialPreferences?: unknown | null;
     onSaved?: () => void;
     onCancel?: () => void;
 };
 
-// Your current schema narrows critRules to a single literal in practice.
 const CRIT_OPTIONS = ["5e-double"] as const;
 type CritRule = (typeof CRIT_OPTIONS)[number];
 
-function normalizePreferences(p: any | null | undefined): {
+function normPrefs(p: any | null | undefined): {
     advRules: boolean;
     critRules: CritRule;
     critThreshold: number;
@@ -55,20 +46,26 @@ export default function CharacterSettingsBlock({
     initialName,
     initialAvatarUrl,
     initialPreferences,
-    onSaved,
-    onCancel,
 }: Props) {
-    const prefs = useMemo(() => normalizePreferences(initialPreferences), [initialPreferences]);
+    // Snapshot for CANCEL
+    const initial = useMemo(
+        () => ({
+            name: initialName ?? "",
+            avatarUrl: initialAvatarUrl ?? "",
+            prefs: normPrefs(initialPreferences),
+        }),
+        [initialName, initialAvatarUrl, initialPreferences]
+    );
     const currentTheme: ThemeName = readThemeFromPreferences(initialPreferences as any);
 
-    // Local form state
-    const [name, setName] = useState(initialName ?? "");
-    const [avatarUrl, setAvatarUrl] = useState<string>(initialAvatarUrl ?? "");
-    const [advRules, setAdvRules] = useState<boolean>(prefs.advRules);
-    const [critRules, setCritRules] = useState<CritRule>(prefs.critRules);
-    const [critThreshold, setCritThreshold] = useState<number>(prefs.critThreshold);
+    // Local state
+    const [name, setName] = useState(initial.name);
+    const [avatarUrl, setAvatarUrl] = useState<string>(initial.avatarUrl);
+    const [advRules, setAdvRules] = useState<boolean>(initial.prefs.advRules);
+    const [critRules, setCritRules] = useState<CritRule>(initial.prefs.critRules);
+    const [critThreshold, setCritThreshold] = useState<number>(initial.prefs.critThreshold);
 
-    // Debounced image probe validation (no CORS console errors)
+    // Debounced avatar probe (no CORS errors)
     const [avatarStatus, setAvatarStatus] = useState<UrlStatus>("idle");
     const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
     const probeRef = useRef<HTMLImageElement | null>(null);
@@ -79,8 +76,8 @@ export default function CharacterSettingsBlock({
             return;
         }
         setAvatarStatus("checking");
-
         if (debounceRef.current) clearTimeout(debounceRef.current);
+
         debounceRef.current = setTimeout(() => {
             if (probeRef.current) {
                 probeRef.current.onload = null;
@@ -96,7 +93,6 @@ export default function CharacterSettingsBlock({
                 probeRef.current = null;
             };
             img.onerror = () => {
-                // Allow save: many CDNs block probes/hotlinking
                 setAvatarStatus("unknown");
                 img.onload = null;
                 img.onerror = null;
@@ -115,76 +111,121 @@ export default function CharacterSettingsBlock({
         };
     }, [avatarUrl]);
 
-    const [submitting, setSubmitting] = useState(false);
-    const [error, setError] = useState<string>("");
+    // —— PATCH helpers ——
 
-    const validThreshold =
-        Number.isFinite(critThreshold) && critThreshold >= 1 && critThreshold <= 20;
+    // Debounce router.refresh() by 150ms to coalesce rapid changes into a single refresh.
+    const router = useRouter();
+    const refreshTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+    function scheduleRefresh() {
+        if (refreshTimer.current) clearTimeout(refreshTimer.current);
+        refreshTimer.current = setTimeout(() => {
+            router.refresh();
+            refreshTimer.current = null;
+        }, 150);
+    }
 
-    const canSave =
-        !submitting &&
-        name.trim().length > 0 &&
-        validThreshold &&
-        avatarStatus !== "bad";
 
-    async function onSubmit(e: React.FormEvent) {
-        e.preventDefault();
-        if (!canSave) return;
+    async function patch(
+        payload: Partial<{
+            name: string;
+            avatarUrl: string | null;
+            preferences: Partial<CharacterPreferences>;
+        }>
+    ) {
+        const res = await fetch(`/api/characters/${characterId}`, {
+            method: "PATCH",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify(payload),
+        });
+        if (res.ok) scheduleRefresh();
+    }
 
-        setSubmitting(true);
-        setError("");
 
-        // Convert empty string -> null for avatarUrl
-        const avatarPatch =
-            avatarUrl && avatarUrl.trim().length > 0 ? avatarUrl.trim() : null;
+    // Debounced PATCH for text/url fields
+    const debounced = useRef<ReturnType<typeof setTimeout> | null>(null);
+    function patchDebounced(payload: Parameters<typeof patch>[0]) {
+        if (debounced.current) clearTimeout(debounced.current);
+        debounced.current = setTimeout(() => {
+            void patch(payload); // <- triggers scheduleRefresh() when OK
+        }, 1500);
+    }
 
-        // v1 prefs only (no unique damage types UI)
-        const preferencesPatch: Partial<CharacterPreferences> = {
-            advRules,
-            critRules,
-            critThreshold: Math.min(20, Math.max(1, Number(critThreshold) || 20)),
-            // NOTE: no uniqueDamageTypes here in v1 UI
-            // NOTE: theme is edited via CharacterThemePicker below (its own endpoint)
-        };
 
-        try {
-            const res = await fetch(`/api/characters/${characterId}`, {
-                method: "PATCH",
-                headers: { "Content-Type": "application/json" },
-                // Server will MERGE preferences with existing instead of replacing
-                body: JSON.stringify({
-                    name: name.trim(),
-                    avatarUrl: avatarPatch,
-                    preferences: preferencesPatch,
-                }),
-            });
-
-            if (!res.ok) {
-                const body = await res.text();
-                throw new Error(body || "Failed to save character settings.");
-            }
-
-            // Refresh page data; we keep this lightweight.
-            if (typeof window !== "undefined") {
-                // eslint-disable-next-line no-restricted-globals
-                location.reload();
-            }
-            onSaved?.();
-        } catch (err: any) {
-            setError(err?.message ?? "Save failed.");
-        } finally {
-            setSubmitting(false);
+    // Name (onChange → debounce PATCH)
+    function onNameChange(v: string) {
+        setName(v);
+        const trimmed = v.trim();
+        if (trimmed.length > 0) {
+            patchDebounced({ name: trimmed });
         }
     }
 
-    return (
-        <form onSubmit={onSubmit} className="space-y-6" data-testid="character-settings-block">
-            {error && (
-                <p className="text-sm rounded bg-rose-100/10 border border-rose-300/30 text-rose-200 px-2 py-1">
-                    {error}
-                </p>
-            )}
+    // Avatar (onChange → debounce PATCH, empty -> null)
+    function onAvatarChange(v: string) {
+        setAvatarUrl(v);
+        const out = v.trim().length > 0 ? v.trim() : null;
+        patchDebounced({ avatarUrl: out });
+    }
 
+    // Adv / Crit (immediate PATCH)
+    async function onAdvToggle(next: boolean) {
+        setAdvRules(next);
+        await patch({ preferences: { advRules: next } });
+    }
+    async function onCritRule(next: CritRule) {
+        setCritRules(next);
+        await patch({ preferences: { critRules: next } });
+    }
+    async function onCritThreshold(next: number) {
+        setCritThreshold(next);
+        const clamped = Math.min(20, Math.max(1, Number(next) || 20));
+        await patch({ preferences: { critThreshold: clamped } });
+    }
+
+    // Listen for modal footer events
+    useEffect(() => {
+        const onDefault = async () => {
+            setAdvRules(true);
+            setCritRules("5e-double");
+            setCritThreshold(20);
+            await patch({ preferences: { advRules: true, critRules: "5e-double", critThreshold: 20 } });
+        };
+        const onCancel = async () => {
+            setName(initial.name);
+            setAvatarUrl(initial.avatarUrl);
+            setAdvRules(initial.prefs.advRules);
+            setCritRules(initial.prefs.critRules);
+            setCritThreshold(initial.prefs.critThreshold);
+
+            await patch({
+                name: initial.name,
+                avatarUrl: initial.avatarUrl.trim().length > 0 ? initial.avatarUrl.trim() : null,
+                preferences: {
+                    advRules: initial.prefs.advRules,
+                    critRules: initial.prefs.critRules,
+                    critThreshold: initial.prefs.critThreshold,
+                },
+            });
+        };
+
+        const d1 = (e: Event) => void onDefault();
+        const d2 = (e: Event) => void onCancel();
+
+        document.addEventListener("char-settings-default", d1 as EventListener);
+        document.addEventListener("char-settings-cancel", d2 as EventListener);
+        return () => {
+            document.removeEventListener("char-settings-default", d1 as EventListener);
+            document.removeEventListener("char-settings-cancel", d2 as EventListener);
+        };
+    }, [characterId, initial]);
+
+    // Validations
+    const validThreshold = Number.isFinite(critThreshold) && critThreshold >= 1 && critThreshold <= 20;
+
+    const themeNow: ThemeName = currentTheme; // rendered picker saves via its own endpoint
+
+    return (
+        <div className="space-y-6">
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                 {/* Name */}
                 <label className="flex flex-col gap-1">
@@ -192,7 +233,7 @@ export default function CharacterSettingsBlock({
                     <input
                         type="text"
                         value={name}
-                        onChange={(e) => setName(e.currentTarget.value)}
+                        onChange={(e) => onNameChange(e.currentTarget.value)}
                         className="rounded border border-slate-600 bg-slate-900 px-3 py-2"
                         placeholder="Character name"
                         required
@@ -205,7 +246,7 @@ export default function CharacterSettingsBlock({
                     <input
                         type="url"
                         value={avatarUrl}
-                        onChange={(e) => setAvatarUrl(e.currentTarget.value)}
+                        onChange={(e) => onAvatarChange(e.currentTarget.value)}
                         className="rounded border border-slate-600 bg-slate-900 px-3 py-2"
                         placeholder="https://…"
                     />
@@ -224,7 +265,7 @@ export default function CharacterSettingsBlock({
                     <input
                         type="checkbox"
                         checked={advRules}
-                        onChange={(e) => setAdvRules(e.currentTarget.checked)}
+                        onChange={(e) => onAdvToggle(e.currentTarget.checked)}
                         className="accent-slate-200"
                     />
                     <span className="text-sm">Use advantage rules</span>
@@ -235,7 +276,7 @@ export default function CharacterSettingsBlock({
                     <span className="text-xs font-semibold">Crit rule</span>
                     <select
                         value={critRules}
-                        onChange={(e) => setCritRules(e.currentTarget.value as CritRule)}
+                        onChange={(e) => onCritRule(e.currentTarget.value as CritRule)}
                         className="rounded border border-slate-600 bg-slate-900 px-3 py-2"
                     >
                         {CRIT_OPTIONS.map((opt) => (
@@ -254,51 +295,25 @@ export default function CharacterSettingsBlock({
                         min={1}
                         max={20}
                         value={critThreshold}
-                        onChange={(e) =>
-                            setCritThreshold(parseInt(e.currentTarget.value || "0", 10))
-                        }
+                        onChange={(e) => onCritThreshold(parseInt(e.currentTarget.value || "0", 10))}
                         className="rounded border border-slate-600 bg-slate-900 px-3 py-2"
                     />
                     {!validThreshold && (
-                        <span className="text-xs text-rose-300">
-                            Enter a value between 1 and 20.
-                        </span>
+                        <span className="text-xs text-rose-300">Enter a value between 1 and 20.</span>
                     )}
                 </label>
             </div>
 
-            {/* Inline theme editing (uses existing endpoint & ThemeScope) */}
+            {/* Theme inside settings (picker saves via its own endpoint) */}
             <div className="border-t border-slate-700/50 pt-4">
                 <h2 className="text-sm font-semibold mb-2">Theme</h2>
                 <CharacterThemePicker
                     characterId={characterId}
-                    currentTheme={currentTheme}
+                    currentTheme={themeNow}
                     scopeId="theme-scope"
+                    onChanged={() => router.refresh()}
                 />
             </div>
-
-            {/* Actions */}
-            <div className="flex items-center gap-2">
-                <button
-                    type="submit"
-                    disabled={!canSave}
-                    className={`rounded-lg px-4 py-2 font-semibold ${canSave
-                            ? "bg-slate-200 text-slate-900 hover:bg-white"
-                            : "bg-slate-700 text-slate-400 cursor-not-allowed"
-                        }`}
-                >
-                    Save
-                </button>
-                {onCancel && (
-                    <button
-                        type="button"
-                        onClick={onCancel}
-                        className="rounded-lg border border-slate-600 px-4 py-2 text-slate-200 hover:bg-slate-800"
-                    >
-                        Cancel
-                    </button>
-                )}
-            </div>
-        </form>
+        </div>
     );
 }

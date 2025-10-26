@@ -8,34 +8,42 @@ type Props = {
     characterId: string;
     currentTheme: ThemeName;
     scopeId?: string; // id of the ThemeScope wrapper (defaults to "theme-scope")
+    onChanged?: () => void; // optional callback when theme is changed
 };
 
 const THEMES: ThemeName[] = ["ember", "azure", "verdant", "amethyst"];
 
-export default function CharacterThemePicker({ characterId, currentTheme, scopeId = "theme-scope" }: Props) {
+export default function CharacterThemePicker({
+    characterId,
+    currentTheme,
+    scopeId = "theme-scope",
+    onChanged,
+}: Props) {
     const [theme, setTheme] = useState<ThemeName>(currentTheme);
-    const [isPending, startTransition] = useTransition();
-    const router = useRouter();
+    const [pending, setPending] = useState(false); // (optional)
+
 
     async function setServerTheme(next: ThemeName) {
-        startTransition(async () => {
-            // 1) Optimistic state for the UI
-            setTheme(next);
-            // 2) Instant CSS: flip data-theme on the wrapper now
-            (document.getElementById(scopeId) ?? document.documentElement)
-                .setAttribute("data-theme", next);
-
-            // 3) Persist to server, then gently revalidate without full reload
-            await fetch(`/api/characters/${characterId}/theme`, {
+        if (pending || next === theme) return;
+        setPending(true);
+        try {
+            const res = await fetch(`/api/characters/${characterId}/theme`, {
                 method: "PATCH",
                 headers: { "Content-Type": "application/json" },
                 body: JSON.stringify({ theme: next }),
-            }).then(() => {
-                // keep UI  server in sync; soft refresh avoids a full page load
-                router.refresh();
-            }).catch(() => { });
-        });
-    }
+            });
+            if (!res.ok) throw new Error("Failed to save theme");
+
+            // Optimistically reflect it locally
+            setTheme(next);
+
+            // Notify the parent (CharacterSettingsBlock) so it can router.refresh()
+            onChanged?.(); // ← NEW
+        } finally {
+            setPending(false);
+        }
+    };
+
 
     function capitalizeFirst(str: string): string {
         if (!str) return str; // handle empty string
@@ -50,7 +58,8 @@ export default function CharacterThemePicker({ characterId, currentTheme, scopeI
                     type="button"
                     aria-label={`Set theme ${t}`}
                     onClick={() => setServerTheme(t)}
-                    className={`btn px-3 py-0 ${theme === t ? "ring-brand" : ""} ${isPending ? "opacity-80" : ""}`}
+                    disabled={pending}
+                    className={`btn px-3 py-0 ${t === theme ? "ring-brand" : ""}`}
                 >
                     {capitalizeFirst(t)}
                 </button>
