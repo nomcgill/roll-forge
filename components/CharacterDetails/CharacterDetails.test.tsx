@@ -1,4 +1,5 @@
-import { render, screen } from "@testing-library/react";
+import { render, screen, waitFor } from "@testing-library/react";
+import userEvent from "@testing-library/user-event";
 import CharacterDetails from "./CharacterDetails";
 
 describe("CharacterDetails (a11y-friendly)", () => {
@@ -51,5 +52,25 @@ describe("CharacterDetails (a11y-friendly)", () => {
 
         // Edit control present (mocked)
         expect(screen.getByRole("button", { name: /edit character/i })).toBeInTheDocument();
+    });
+    it("opens and closes the settings modal", async () => {
+        render(<CharacterDetails character={{ id: "c1", name: "Testy", avatarUrl: "", preferences: {} }} />);
+
+        const user = userEvent.setup();
+        const trigger = screen.getByRole("button", { name: /edit character/i });
+        await user.click(trigger);
+
+        // open
+        await screen.findByRole("dialog", { name: /edit character preferences/i });
+
+        // close via backdrop
+        await user.click(screen.getByTestId("char-settings-backdrop"));
+
+        // re-query after state change (don’t assert on a stale reference)
+        await waitFor(() => {
+            expect(
+                screen.queryByRole("dialog", { name: /edit character preferences/i })
+            ).not.toBeInTheDocument();
+        });
     });
 });
